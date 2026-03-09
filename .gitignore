@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+chrome_profile/
+downloads/
+data/
+.env
+*.html
+*.png
+*.json
+!config.py
+!requirements.txt
+!package.json
+debug_*
