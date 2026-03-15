@@ -15,7 +15,7 @@ from scraper.product_data import MercariDraft
 
 
 def create_basic_draft(product, condition, region, shipping_method, shipping_size, shipping_days):
-	"""LLMなしの基本的な下書きを作成（Phase 1用）"""
+	"""AIなしの基本的な下書きを作成"""
 	# 価格計算
 	if product.price:
 		breakdown = calculate_price(
@@ -91,7 +91,7 @@ def main():
 		help="発送までの日数",
 	)
 	parser.add_argument("--output", "-o", default=None, help="JSON出力ファイルパス")
-	parser.add_argument("--llm", action="store_true", help="Claude APIでテキスト生成")
+	parser.add_argument("--ai", action="store_true", help="Gemini AIでテキスト生成")
 	parser.add_argument("--images", action="store_true", help="画像をダウンロード")
 	parser.add_argument("--ui", action="store_true", help="Streamlit UIを起動")
 
@@ -119,14 +119,13 @@ def main():
 	print(f"  画像: {len(product.image_urls)}枚")
 	print(f"  仕様: {len(product.specifications)}項目")
 
-	# LLMで出品テキスト生成
-	if args.llm:
+	# AIで出品テキスト生成
+	if args.ai:
 		try:
 			from generator.listing_generator import ListingGenerator
-			print("\nClaude APIで出品テキストを生成中...")
+			print("\nGemini AIで出品テキストを生成中...")
 			generator = ListingGenerator()
 			draft = generator.generate(product, condition=args.condition)
-			# 価格計算を追加
 			if product.price:
 				draft.price_breakdown = calculate_price(
 					product.price,
@@ -140,7 +139,7 @@ def main():
 			draft.shipping_days = args.shipping_days
 			draft.source_url = product.url
 		except Exception as e:
-			print(f"LLM生成エラー: {e}")
+			print(f"AI生成エラー: {e}")
 			print("基本テンプレートで下書きを作成します。")
 			draft = create_basic_draft(
 				product, args.condition, args.region,

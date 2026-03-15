@@ -1,76 +1,36 @@
-"""Amazon.co.jpから商品情報を取得するスクレイパー"""
+"""Amazon.co.jpから商品情報を取得するスクレイパー（requests + BeautifulSoup版）"""
 
 import json
 import re
 import time
 
+import requests
 from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
-from webdriver_manager.chrome import ChromeDriverManager
-
 from urllib.parse import quote_plus
 
-from config import ASIN_PATTERN, SELECTORS
+from config import ASIN_PATTERN, SELECTORS, REQUEST_TIMEOUT
 from scraper.product_data import AmazonProduct, SearchResult
+from scraper.user_agents import get_headers
 
 
 class AmazonScraper:
-	"""Amazon.co.jpから商品情報を取得（Selenium使用）"""
+	"""Amazon.co.jpから商品情報を取得（requests + BeautifulSoup使用）"""
 
 	def __init__(self):
-		self.driver = None
-
-	def _create_driver(self) -> webdriver.Chrome:
-		"""ヘッドレスChromeドライバーを作成"""
-		options = Options()
-		options.add_argument("--headless=new")
-		options.add_argument("--no-sandbox")
-		options.add_argument("--disable-dev-shm-usage")
-		options.add_argument("--disable-blink-features=AutomationControlled")
-		options.add_argument("--lang=ja-JP")
-		options.add_argument(
-			"--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-			"AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-		)
-		options.add_experimental_option("excludeSwitches", ["enable-automation"])
-		service = Service(ChromeDriverManager().install())
-		return webdriver.Chrome(service=service, options=options)
+		self.session = requests.Session()
+		self.session.headers.update(get_headers())
 
 	def scrape(self, url: str) -> AmazonProduct:
 		"""URLから商品情報を取得"""
 		asin = self._extract_asin(url)
-		try:
-			self.driver = self._create_driver()
-			html = self._fetch_page(url)
-			return self._parse_product(html, url, asin)
-		finally:
-			if self.driver:
-				self.driver.quit()
-				self.driver = None
+		html = self._fetch_page(url)
+		return self._parse_product(html, url, asin)
 
 	def search(self, keyword: str, max_results: int = 20) -> list[SearchResult]:
 		"""キーワードでAmazon.co.jpを検索し、商品リストを返す"""
 		search_url = f"https://www.amazon.co.jp/s?k={quote_plus(keyword)}"
-		try:
-			self.driver = self._create_driver()
-			self.driver.get(search_url)
-			WebDriverWait(self.driver, 15).until(
-				EC.presence_of_element_located(
-					(By.CSS_SELECTOR, 'div[data-component-type="s-search-result"], body')
-				)
-			)
-			time.sleep(2)
-			html = self.driver.page_source
-			return self._parse_search_results(html, max_results)
-		finally:
-			if self.driver:
-				self.driver.quit()
-				self.driver = None
+		html = self._fetch_page(search_url)
+		return self._parse_search_results(html, max_results)
 
 	def _parse_search_results(self, html: str, max_results: int) -> list[SearchResult]:
 		"""検索結果ページをパースして商品リストを返す"""
@@ -83,7 +43,7 @@ class AmazonScraper:
 			if not asin:
 				continue
 
-			# タイトル（h2直下のspanまたはh2自体のテキスト）
+			# タイトル
 			title_el = item.select_one("h2 span") or item.select_one("h2")
 			title = title_el.get_text(strip=True) if title_el else ""
 			if not title:
@@ -105,9 +65,7 @@ class AmazonScraper:
 			image_url = img_el.get("src", "") if img_el else ""
 
 			# URL
-			link_el = item.select_one("h2 a[href]")
-			href = link_el.get("href", "") if link_el else ""
-			url = f"https://www.amazon.co.jp/dp/{asin}" if asin else href
+			url = f"https://www.amazon.co.jp/dp/{asin}"
 
 			# 評価
 			rating = None
@@ -139,14 +97,11 @@ class AmazonScraper:
 		raise ValueError(f"URLからASINを抽出できません: {url}")
 
 	def _fetch_page(self, url: str) -> str:
-		"""Seleniumでページを取得"""
-		self.driver.get(url)
-		# ページ読み込み完了を待機
-		WebDriverWait(self.driver, 15).until(
-			EC.presence_of_element_located((By.CSS_SELECTOR, "#productTitle, #title, body"))
-		)
-		time.sleep(2)
-		return self.driver.page_source
+		"""requestsでページを取得"""
+		response = self.session.get(url, timeout=REQUEST_TIMEOUT)
+		response.raise_for_status()
+		response.encoding = response.apparent_encoding
+		return response.text
 
 	def _parse_product(self, html: str, url: str, asin: str) -> AmazonProduct:
 		"""HTMLをパースしてAmazonProductに変換"""
@@ -185,7 +140,6 @@ class AmazonScraper:
 			element = soup.select_one(selector)
 			if element:
 				text = element.get_text(strip=True)
-				# 「￥1,234」「1,234円」「¥1234」等から数値を抽出
 				numbers = re.findall(r"[\d,]+", text)
 				if numbers:
 					try:
@@ -205,7 +159,6 @@ class AmazonScraper:
 			try:
 				images_data = json.loads(match.group(1))
 				for img in images_data:
-					# hiRes > large > main の優先順で取得
 					url = img.get("hiRes") or img.get("large") or img.get("main")
 					if url and url not in image_urls:
 						image_urls.append(url)
@@ -219,9 +172,7 @@ class AmazonScraper:
 				for el in elements:
 					src = el.get("data-old-hires") or el.get("src") or ""
 					if src and "sprite" not in src and src not in image_urls:
-						# 小さいサムネイルを除外
 						if "._AC_" in src or "._SL" in src:
-							# 高解像度版に変換
 							src = re.sub(r"\._[A-Z]+_[A-Z]+\d+_\.", "._AC_SL1500_.", src)
 						image_urls.append(src)
 
@@ -250,7 +201,6 @@ class AmazonScraper:
 		for selector in SELECTORS["specifications"]:
 			elements = soup.select(selector)
 			for el in elements:
-				# テーブル行の場合
 				th = el.select_one("th")
 				td = el.select_one("td")
 				if th and td:
@@ -259,7 +209,6 @@ class AmazonScraper:
 					if key and value:
 						specs[key] = value
 				else:
-					# リスト形式の場合（detailBullets）
 					text = el.get_text(strip=True)
 					if ":" in text:
 						parts = text.split(":", 1)
@@ -290,7 +239,6 @@ class AmazonScraper:
 	def _parse_brand(self, soup: BeautifulSoup) -> str:
 		"""ブランド名を取得"""
 		brand = self._find_first(soup, SELECTORS["brand"])
-		# 「ブランド: Sony」のようなテキストからブランド名を抽出
 		if brand:
 			brand = re.sub(r"^(ブランド|Brand)\s*[:：]\s*", "", brand)
 			brand = re.sub(r"^ストアを?訪問\s*", "", brand)

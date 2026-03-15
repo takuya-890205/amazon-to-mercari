@@ -1,11 +1,13 @@
 """アプリケーション設定"""
 
+import json
 from pathlib import Path
 
 # --- パス設定 ---
 PROJECT_DIR = Path(__file__).parent
 DATA_DIR = PROJECT_DIR / "data"
 DOWNLOAD_DIR = PROJECT_DIR / "downloads"
+TEMPLATE_FILE = PROJECT_DIR / "my_template.json"
 
 # --- Amazon設定 ---
 AMAZON_BASE_URL = "https://www.amazon.co.jp"
@@ -130,3 +132,37 @@ PREFECTURES = [
 	"徳島県", "香川県", "愛媛県", "高知県",
 	"福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県",
 ]
+
+
+# --- デフォルトテンプレート ---
+DEFAULT_TEMPLATE = {
+	"condition": "目立った傷や汚れなし",
+	"shipping_method": "らくらくメルカリ便",
+	"shipping_size": "60サイズ",
+	"shipping_from": "東京都",
+	"shipping_days": "2~3日で発送",
+	"description_header": "",
+	"description_footer": "\nご質問はお気軽にコメントください。",
+	"use_ai": True,
+	"download_images": True,
+}
+
+
+def load_template() -> dict:
+	"""保存済みテンプレートを読み込む（なければデフォルト）"""
+	if TEMPLATE_FILE.exists():
+		try:
+			with open(TEMPLATE_FILE, "r", encoding="utf-8") as f:
+				saved = json.load(f)
+			# デフォルト値でマージ（保存ファイルに欠けているキーを補完）
+			merged = {**DEFAULT_TEMPLATE, **saved}
+			return merged
+		except (json.JSONDecodeError, IOError):
+			pass
+	return DEFAULT_TEMPLATE.copy()
+
+
+def save_template(template: dict) -> None:
+	"""テンプレートをファイルに保存"""
+	with open(TEMPLATE_FILE, "w", encoding="utf-8") as f:
+		json.dump(template, f, ensure_ascii=False, indent=2)

@@ -1,12 +1,14 @@
 """Amazon → メルカリ カテゴリマッピング"""
 
 import json
-import shutil
-import subprocess
-import sys
+import os
+
+from dotenv import load_dotenv
 
 from generator.prompts import CATEGORY_PROMPT
 from scraper.product_data import AmazonProduct
+
+load_dotenv()
 
 # キーワードベースの静的マッピング（Amazonキーワード → メルカリカテゴリ）
 KEYWORD_MAPPING = {
@@ -93,21 +95,23 @@ class CategoryMapper:
 
 	def map_category(self, product: AmazonProduct) -> list[str]:
 		"""ルールベースでカテゴリを推定"""
-		# タイトル + Amazonカテゴリから検索
 		search_text = f"{product.title} {product.brand} {' '.join(product.category_breadcrumb)}"
 
 		for keyword, mercari_category in KEYWORD_MAPPING.items():
 			if keyword in search_text:
 				return mercari_category
 
-		# ヒットしなければAmazonカテゴリをそのまま返す
 		if product.category_breadcrumb:
 			return product.category_breadcrumb[:3]
 
 		return ["その他", "その他", "その他"]
 
-	def map_with_llm(self, product: AmazonProduct) -> list[str]:
-		"""Claude CLIでカテゴリを推定（フォールバック用）"""
+	def map_with_ai(self, product: AmazonProduct) -> list[str]:
+		"""Gemini APIでカテゴリを推定（フォールバック用）"""
+		api_key = os.getenv("GEMINI_API_KEY", "")
+		if not api_key:
+			return self.map_category(product)
+
 		prompt = CATEGORY_PROMPT.format(
 			title=product.title,
 			brand=product.brand or "不明",
@@ -115,32 +119,12 @@ class CategoryMapper:
 		)
 
 		try:
-			# Windowsでは claude.cmd を使う
-			if sys.platform == "win32":
-				claude_cmd = shutil.which("claude.cmd") or shutil.which("claude") or "claude"
-			else:
-				claude_cmd = shutil.which("claude") or "claude"
+			import google.generativeai as genai
+			genai.configure(api_key=api_key)
+			model = genai.GenerativeModel("gemini-2.0-flash")
+			response = model.generate_content(prompt)
+			text = response.text.strip()
 
-			# CLAUDECODE環境変数をunsetしてネスト制限を回避
-			env = dict(__import__("os").environ)
-			env.pop("CLAUDECODE", None)
-			result = subprocess.run(
-				[claude_cmd, "-p", "-", "--output-format", "json"],
-				capture_output=True,
-				text=True,
-				timeout=60,
-				encoding="utf-8",
-				env=env,
-				input=prompt,
-			)
-			if result.returncode != 0:
-				raise RuntimeError(result.stderr)
-
-			# Claude CLIのJSON出力から結果を取得
-			output = json.loads(result.stdout)
-			text = output.get("result", result.stdout).strip()
-
-			# JSONを抽出
 			start = text.find("{")
 			end = text.rfind("}") + 1
 			if start >= 0 and end > start:

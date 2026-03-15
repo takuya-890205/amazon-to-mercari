@@ -17,6 +17,8 @@ from config import (
 	PREFECTURES,
 	SHIPPING_DAYS_CHOICES,
 	SHIPPING_METHODS,
+	load_template,
+	save_template,
 )
 from generator.price_calculator import calculate_price, suggest_price_range
 from output.draft_exporter import to_json, to_text
@@ -25,12 +27,12 @@ from scraper.product_data import MercariDraft
 
 
 st.set_page_config(
-	page_title="Amazon → メルカリ 出品入力サポート",
+	page_title="Amazon → メルカリ 出品下書き生成",
 	page_icon="🛒",
 	layout="wide",
 )
 
-st.title("Amazon → メルカリ 出品入力サポート")
+st.title("Amazon → メルカリ 出品下書き生成")
 
 
 # --- セッション状態の初期化 ---
@@ -40,194 +42,88 @@ if "draft" not in st.session_state:
 	st.session_state.draft = None
 if "images_downloaded" not in st.session_state:
 	st.session_state.images_downloaded = False
-if "selected_url" not in st.session_state:
-	st.session_state.selected_url = ""
-if "order_items" not in st.session_state:
-	st.session_state.order_items = None
 if "last_fetched_url" not in st.session_state:
 	st.session_state.last_fetched_url = ""
+
+# テンプレート読み込み
+template = load_template()
 
 
 # --- サイドバー ---
 with st.sidebar:
 	st.header("設定")
 
-	st.subheader("商品の指定方法")
-	input_mode = st.radio(
-		"商品の指定方法",
-		["購入履歴から選択", "URLから取得"],
-		horizontal=True,
-		label_visibility="collapsed",
+	amazon_url = st.text_input(
+		"Amazon商品URL",
+		placeholder="https://www.amazon.co.jp/dp/XXXXXXXXXX",
 	)
 
-	if input_mode == "購入履歴から選択":
-		order_button = st.button("履歴を取得して右に表示", type="primary", use_container_width=True)
-		amazon_url = ""
-	else:
-		order_button = False
-		amazon_url = st.text_input(
-			"Amazon商品URL",
-			value=st.session_state.selected_url,
-			placeholder="https://www.amazon.co.jp/dp/XXXXXXXXXX",
-			label_visibility="collapsed",
-		)
-		st.markdown("URLが分からない場合:")
-		st.link_button("購入履歴からURLを探す", "https://www.amazon.co.jp/gp/your-account/order-history", use_container_width=True)
-
-	# URL入力で自動取得（新しいURLが入力されたら自動フェッチ）
+	# URL入力で自動取得
 	fetch_button = False
 	if amazon_url and amazon_url != st.session_state.last_fetched_url:
-		# amazon.co.jpのURLかチェック
 		if "amazon.co.jp" in amazon_url or "amzn" in amazon_url:
 			fetch_button = True
 
 	st.divider()
 
-	condition = st.selectbox("商品の状態", CONDITION_CHOICES)
+	# テンプレートから初期値を取得
+	condition_idx = CONDITION_CHOICES.index(template["condition"]) if template["condition"] in CONDITION_CHOICES else 0
+	condition = st.selectbox("商品の状態", CONDITION_CHOICES, index=condition_idx)
 
-	shipping_method = st.selectbox(
-		"配送方法",
-		list(SHIPPING_METHODS.keys()),
-	)
+	method_keys = list(SHIPPING_METHODS.keys())
+	method_idx = method_keys.index(template["shipping_method"]) if template["shipping_method"] in method_keys else 0
+	shipping_method = st.selectbox("配送方法", method_keys, index=method_idx)
 
-	# 選択した配送方法に応じたサイズ選択
 	size_options = list(SHIPPING_METHODS[shipping_method].keys())
-	shipping_size = st.selectbox("配送サイズ", size_options)
+	size_idx = size_options.index(template["shipping_size"]) if template["shipping_size"] in size_options else 0
+	shipping_size = st.selectbox("配送サイズ", size_options, index=size_idx)
 
-	shipping_from = st.selectbox("発送元", PREFECTURES, index=12)  # 東京都
-	shipping_days = st.selectbox("発送までの日数", SHIPPING_DAYS_CHOICES, index=1)
+	pref_idx = PREFECTURES.index(template["shipping_from"]) if template["shipping_from"] in PREFECTURES else 12
+	shipping_from = st.selectbox("発送元", PREFECTURES, index=pref_idx)
 
-	use_llm = st.checkbox("Claude APIで説明文を生成", value=True)
-	download_images = st.checkbox("画像をダウンロード", value=True)
+	days_idx = SHIPPING_DAYS_CHOICES.index(template["shipping_days"]) if template["shipping_days"] in SHIPPING_DAYS_CHOICES else 1
+	shipping_days = st.selectbox("発送までの日数", SHIPPING_DAYS_CHOICES, index=days_idx)
+
+	use_ai = st.checkbox("Gemini AIで説明文を生成", value=template.get("use_ai", True))
+	download_images = st.checkbox("画像をダウンロード", value=template.get("download_images", True))
+
+	# --- テンプレート設定 ---
+	st.divider()
+	with st.expander("デフォルトテンプレート設定"):
+		st.caption("ここで設定した値が次回以降のデフォルトになります")
+
+		tpl_header = st.text_area(
+			"説明文ヘッダー（冒頭に自動挿入）",
+			value=template.get("description_header", ""),
+			height=68,
+			placeholder="例: 【即日発送】【送料無料】",
+		)
+		tpl_footer = st.text_area(
+			"説明文フッター（末尾に自動挿入）",
+			value=template.get("description_footer", ""),
+			height=68,
+			placeholder="例: ご質問はお気軽にコメントください。",
+		)
+
+		if st.button("現在の設定をデフォルトとして保存", use_container_width=True):
+			new_template = {
+				"condition": condition,
+				"shipping_method": shipping_method,
+				"shipping_size": shipping_size,
+				"shipping_from": shipping_from,
+				"shipping_days": shipping_days,
+				"description_header": tpl_header,
+				"description_footer": tpl_footer,
+				"use_ai": use_ai,
+				"download_images": download_images,
+			}
+			save_template(new_template)
+			st.success("デフォルト設定を保存しました")
 
 	# 閉じるボタン
 	st.divider()
 	if st.button("アプリを終了", use_container_width=True):
 		os.kill(os.getpid(), signal.SIGTERM)
-
-
-# --- 購入履歴取得処理 ---
-if order_button:
-	progress_container = st.empty()
-	try:
-		def update_order_progress(msg):
-			progress_container.info(f"⏳ {msg}")
-
-		from scraper.order_history import OrderHistoryScraper
-		scraper = OrderHistoryScraper(on_progress=update_order_progress)
-		st.session_state.order_items = scraper.fetch_orders()
-		st.session_state.product = None
-		st.session_state.draft = None
-		st.session_state.selected_url = ""
-		if not st.session_state.order_items:
-			progress_container.warning("購入履歴が取得できませんでした。")
-		else:
-			progress_container.success(f"{len(st.session_state.order_items)}件の商品を取得しました")
-	except Exception as e:
-		progress_container.error(f"購入履歴取得エラー: {e}")
-		st.session_state.order_items = None
-
-# --- 購入履歴表示 ---
-if st.session_state.order_items and not st.session_state.product:
-	items = st.session_state.order_items
-
-	# 選択中の商品を目立つように表示
-	selected_item = None
-	if st.session_state.selected_url:
-		for item in items:
-			if item.url == st.session_state.selected_url:
-				selected_item = item
-				break
-
-	if selected_item:
-		st.subheader("選択中の商品")
-		sel_cols = st.columns([1, 3])
-		with sel_cols[0]:
-			if selected_item.image_url:
-				st.image(selected_item.image_url, use_container_width=True)
-		with sel_cols[1]:
-			st.markdown(f"### {selected_item.title}")
-			info_parts = []
-			if selected_item.price:
-				info_parts.append(f"**購入価格:** ¥{selected_item.price:,}")
-			if selected_item.order_date:
-				info_parts.append(f"**注文日:** {selected_item.order_date}")
-			if info_parts:
-				st.markdown(" / ".join(info_parts))
-			btn_cols = st.columns([1, 1, 2])
-			with btn_cols[0]:
-				draft_btn = st.empty()
-				if draft_btn.button("下書きを生成", type="primary", use_container_width=True):
-					draft_btn.markdown(
-						'<div style="background:#1a73e8;color:#fff;padding:10px 16px;'
-						'border-radius:8px;text-align:center;font-weight:bold;'
-						'animation:pulse 1.5s ease-in-out infinite">'
-						'⏳ 下書き生成中...'
-						'</div>'
-						'<style>@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}</style>',
-						unsafe_allow_html=True,
-					)
-					fetch_button = True
-					amazon_url = st.session_state.selected_url
-					st.session_state.last_fetched_url = ""  # 強制取得
-			with btn_cols[1]:
-				if st.button("選択を解除", use_container_width=True):
-					st.session_state.selected_url = ""
-					st.rerun()
-		st.divider()
-
-	# ページネーション
-	items_per_page = 9
-	if "order_page" not in st.session_state:
-		st.session_state.order_page = 0
-	total_pages = max(1, (len(items) + items_per_page - 1) // items_per_page)
-	page = st.session_state.order_page
-	page_start = page * items_per_page
-	page_end = min(page_start + items_per_page, len(items))
-	page_items = items[page_start:page_end]
-
-	st.subheader(f"購入履歴（{len(items)}件 / {page + 1}/{total_pages}ページ）")
-
-	# ページ送りボタン（一覧の上に配置）
-	if total_pages > 1:
-		nav_cols = st.columns([1, 2, 1])
-		with nav_cols[0]:
-			if page > 0:
-				if st.button("← 前のページ", use_container_width=True):
-					st.session_state.order_page = page - 1
-					st.rerun()
-		with nav_cols[2]:
-			if page < total_pages - 1:
-				if st.button("次のページ →", use_container_width=True):
-					st.session_state.order_page = page + 1
-					st.rerun()
-
-	# 3列グリッドで表示（カード型・クリックで選択）
-	cols_per_row = 3
-	for row_start in range(0, len(page_items), cols_per_row):
-		cols = st.columns(cols_per_row)
-		for col_idx, item in enumerate(page_items[row_start:row_start + cols_per_row]):
-			with cols[col_idx]:
-				is_selected = (st.session_state.selected_url == item.url)
-				with st.container(border=True):
-					if item.image_url:
-						st.image(item.image_url, use_container_width=True)
-					st.markdown(f"**{item.title[:60]}{'...' if len(item.title) > 60 else ''}**")
-					details = []
-					if item.price:
-						details.append(f"¥{item.price:,}")
-					if item.order_date:
-						details.append(item.order_date)
-					if details:
-						st.caption(" / ".join(details))
-					if is_selected:
-						if st.button("✓ 選択中", key=f"order_{item.asin}", type="primary", use_container_width=True):
-							st.session_state.selected_url = ""
-							st.rerun()
-					else:
-						if st.button("選択", key=f"order_{item.asin}", use_container_width=True):
-							st.session_state.selected_url = item.url
-							st.rerun()
 
 
 # --- 商品情報取得 ---
@@ -243,9 +139,9 @@ if fetch_button and amazon_url:
 			st.error(f"取得エラー: {e}")
 			st.session_state.product = None
 
-	# LLMで出品テキスト生成
-	if st.session_state.product and use_llm:
-		with st.spinner("Claude APIで出品テキストを生成中..."):
+	# AIで出品テキスト生成
+	if st.session_state.product and use_ai:
+		with st.spinner("Gemini AIで出品テキストを生成中..."):
 			try:
 				from generator.listing_generator import ListingGenerator
 				generator = ListingGenerator()
@@ -268,18 +164,35 @@ if fetch_button and amazon_url:
 				draft.shipping_from = shipping_from
 				draft.shipping_days = shipping_days
 				draft.source_url = amazon_url
+
+				# テンプレートのヘッダー・フッターを適用
+				desc = draft.description
+				if tpl_header:
+					desc = tpl_header.strip() + "\n\n" + desc
+				if tpl_footer:
+					desc = desc.rstrip() + "\n" + tpl_footer.strip()
+				draft.description = desc[:1000]
+
 				st.session_state.draft = draft
 			except Exception as e:
-				st.warning(f"LLM生成エラー: {e}。基本テンプレートを使用します。")
-				use_llm = False
+				st.warning(f"AI生成エラー: {e}。基本テンプレートを使用します。")
+				use_ai = False
 
-	# LLMなしの場合は基本テンプレート
-	if st.session_state.product and not use_llm:
+	# AIなしの場合は基本テンプレート
+	if st.session_state.product and not use_ai:
 		from main import create_basic_draft
-		st.session_state.draft = create_basic_draft(
+		draft = create_basic_draft(
 			st.session_state.product,
 			condition, shipping_from, shipping_method, shipping_size, shipping_days,
 		)
+		# テンプレートのヘッダー・フッターを適用
+		desc = draft.description
+		if tpl_header:
+			desc = tpl_header.strip() + "\n\n" + desc
+		if tpl_footer:
+			desc = desc.rstrip() + "\n" + tpl_footer.strip()
+		draft.description = desc[:1000]
+		st.session_state.draft = draft
 
 	# 画像ダウンロード
 	if st.session_state.product and download_images and st.session_state.product.image_urls:
@@ -307,13 +220,6 @@ product = st.session_state.product
 draft = st.session_state.draft
 
 if product and draft:
-	# 一覧に戻るボタン
-	if st.button("← 一覧に戻る"):
-		st.session_state.product = None
-		st.session_state.draft = None
-		st.session_state.selected_url = ""
-		st.rerun()
-
 	col_amazon, col_mercari = st.columns(2)
 
 	# 左: Amazon商品プレビュー
@@ -354,7 +260,6 @@ if product and draft:
 	with col_mercari:
 		st.subheader("メルカリ 出品下書き")
 
-		# 編集可能フォーム
 		edited_title = st.text_input(
 			"タイトル (最大40文字)",
 			value=draft.title,
@@ -401,7 +306,6 @@ if product and draft:
 
 		# ダウンロード済み画像（選択式）
 		if draft.image_paths:
-			# セッション状態で選択状態を初期化（全未選択）
 			if "selected_images" not in st.session_state or len(st.session_state.selected_images) != len(draft.image_paths):
 				st.session_state.selected_images = [False] * len(draft.image_paths)
 
@@ -409,7 +313,6 @@ if product and draft:
 			st.markdown(f"**画像:** {selected_count}/{len(draft.image_paths)}枚 選択中")
 
 			with st.expander("画像を選択", expanded=True):
-				# 全選択/全解除ボタン
 				sel_cols = st.columns(2)
 				with sel_cols[0]:
 					if st.button("すべて選択", use_container_width=True):
@@ -420,7 +323,6 @@ if product and draft:
 						st.session_state.selected_images = [False] * len(draft.image_paths)
 						st.rerun()
 
-				# 画像グリッド（チェックボックス付き）
 				img_cols2 = st.columns(min(3, len(draft.image_paths)))
 				for i, path in enumerate(draft.image_paths):
 					with img_cols2[i % len(img_cols2)]:
@@ -439,7 +341,7 @@ if product and draft:
 
 	# --- アクションボタン ---
 	st.divider()
-	action_cols = st.columns(4)
+	action_cols = st.columns(3)
 
 	with action_cols[0]:
 		if st.button("📋 テキストをコピー", use_container_width=True):
@@ -472,24 +374,5 @@ if product and draft:
 			use_container_width=True,
 		)
 
-	with action_cols[3]:
-		if st.button("🛒 メルカリに自動入力", use_container_width=True):
-			# 選択された画像のみをドラフトに設定
-			if draft.image_paths and "selected_images" in st.session_state:
-				draft.image_paths = [
-					p for p, sel in zip(draft.image_paths, st.session_state.selected_images) if sel
-				]
-			progress_container = st.empty()
-			try:
-				def update_progress(msg):
-					progress_container.info(f"⏳ {msg}")
-
-				from output.mercari_filler import MercariFiller
-				filler = MercariFiller(on_progress=update_progress)
-				filler.fill_listing(draft, wait_for_close=False)
-				progress_container.success("メルカリ出品フォームに入力しました。内容を確認して出品してください。")
-			except Exception as e:
-				progress_container.error(f"自動入力エラー: {e}")
-
-elif not st.session_state.product and not st.session_state.order_items:
-	st.info("サイドバーからURL入力または購入履歴から商品を指定してください。")
+elif not st.session_state.product:
+	st.info("サイドバーにAmazon商品URLを入力してください。")

@@ -1,16 +1,27 @@
-"""Claude CLIを使ったメルカリ向け出品テキスト生成"""
+"""Gemini APIを使ったメルカリ向け出品テキスト生成"""
 
 import json
-import shutil
-import subprocess
-import sys
+import os
+
+from dotenv import load_dotenv
 
 from generator.prompts import UNIFIED_LISTING_PROMPT
 from scraper.product_data import AmazonProduct, MercariDraft
 
+load_dotenv()
+
 
 class ListingGenerator:
-	"""Claude CLI経由でメルカリ出品テキストを一括生成"""
+	"""Gemini API経由でメルカリ出品テキストを一括生成"""
+
+	def __init__(self):
+		self.api_key = os.getenv("GEMINI_API_KEY", "")
+		if not self.api_key:
+			raise RuntimeError(
+				"GEMINI_API_KEY が設定されていません。\n"
+				"1. https://aistudio.google.com/apikey でAPIキーを取得\n"
+				"2. .env ファイルに GEMINI_API_KEY=your_key を設定"
+			)
 
 	def generate(
 		self,
@@ -36,8 +47,8 @@ class ListingGenerator:
 			additional_notes=f"補足: {additional_notes}" if additional_notes else "",
 		)
 
-		# Claude CLI呼び出し
-		response_text = self._call_cli(prompt)
+		# Gemini API呼び出し
+		response_text = self._call_gemini(prompt)
 
 		# JSONパース
 		result = self._parse_response(response_text)
@@ -52,46 +63,25 @@ class ListingGenerator:
 			source_url=product.url,
 		)
 
-	def _get_claude_cmd(self) -> str:
-		"""環境に応じたClaude CLIコマンド名を返す"""
-		# Windowsでは claude.cmd を使う
-		if sys.platform == "win32":
-			cmd = shutil.which("claude.cmd") or shutil.which("claude")
-		else:
-			cmd = shutil.which("claude")
-		if not cmd:
-			raise RuntimeError("Claude CLIが見つかりません。npm install -g @anthropic-ai/claude-code でインストールしてください。")
-		return cmd
+	def _call_gemini(self, prompt: str) -> str:
+		"""Gemini APIを呼び出してテキスト生成"""
+		import google.generativeai as genai
 
-	def _call_cli(self, prompt: str) -> str:
-		"""Claude CLIを呼び出してテキスト生成"""
-		claude_cmd = self._get_claude_cmd()
-		# CLAUDECODE環境変数をunsetしてネスト制限を回避
-		env = dict(__import__("os").environ)
-		env.pop("CLAUDECODE", None)
-		result = subprocess.run(
-			[claude_cmd, "-p", "-", "--output-format", "json"],
-			capture_output=True,
-			text=True,
-			timeout=120,
-			encoding="utf-8",
-			env=env,
-			input=prompt,
+		genai.configure(api_key=self.api_key)
+		model = genai.GenerativeModel("gemini-2.0-flash")
+
+		response = model.generate_content(
+			prompt,
+			generation_config=genai.types.GenerationConfig(
+				temperature=0.7,
+				max_output_tokens=2048,
+			),
 		)
 
-		if result.returncode != 0:
-			raise RuntimeError(f"Claude CLI エラー: {result.stderr}")
-
-		# Claude CLIのJSON出力から結果テキストを取得
-		try:
-			output = json.loads(result.stdout)
-			return output.get("result", result.stdout)
-		except json.JSONDecodeError:
-			# JSON形式でない場合はそのまま返す
-			return result.stdout
+		return response.text
 
 	def _parse_response(self, text: str) -> dict:
-		"""Claude CLIのレスポンスからJSONを抽出してパース"""
+		"""Gemini APIのレスポンスからJSONを抽出してパース"""
 		text = text.strip()
 
 		# ```json ... ``` ブロックを抽出
