@@ -1,4 +1,6 @@
-"""ブラウザページ上にフローティングステータスバーを表示するユーティリティ"""
+"""ブラウザページ上にフローティングステータスバーを表示するユーティリティ
+Playwright / Selenium 両対応
+"""
 
 # 共通スタイル
 _BAR_STYLE = (
@@ -9,16 +11,12 @@ _BAR_STYLE = (
 	"pointer-events:none;letter-spacing:0.5px;"
 )
 
-# ステータスバーのテキストを更新 + ブラウザタイトルにも反映
-# ※ arguments[0]が即時実行関数内で参照できないため、先にローカル変数に取得
 _UPDATE_JS = """
-var _msg = arguments[0];
-(function(msg) {
+(msg) => {
 	if (!window._auto_status_original_title) {
 		window._auto_status_original_title = document.title;
 	}
 	document.title = msg;
-
 	var bar = document.getElementById('_auto_status_bar');
 	if (!bar) {
 		bar = document.createElement('div');
@@ -40,26 +38,11 @@ var _msg = arguments[0];
 	} else {
 		bar.className = '';
 	}
-})(_msg);
+}
 """.replace('%STYLE%', _BAR_STYLE).replace('%%', '%')
 
-# ステータスバーを非表示 + タイトルを復元
 _HIDE_JS = """
-var bar = document.getElementById('_auto_status_bar');
-if (bar) {
-	bar.style.opacity = '0';
-	setTimeout(function() { bar.style.display = 'none'; }, 300);
-}
-if (window._auto_status_original_title) {
-	document.title = window._auto_status_original_title;
-	delete window._auto_status_original_title;
-}
-"""
-
-# 完了後に一定時間で自動的にバーを消す
-_AUTO_HIDE_JS = """
-var _delay = arguments[0];
-setTimeout(function() {
+() => {
 	var bar = document.getElementById('_auto_status_bar');
 	if (bar) {
 		bar.style.opacity = '0';
@@ -69,29 +52,21 @@ setTimeout(function() {
 		document.title = window._auto_status_original_title;
 		delete window._auto_status_original_title;
 	}
-}, _delay);
+}
 """
 
 
-def show_status(driver, message: str) -> None:
-	"""ブラウザページ上にステータスメッセージを表示（タブタイトルにも反映）"""
+def show_status(page, message: str) -> None:
+	"""ブラウザページ上にステータスメッセージを表示"""
 	try:
-		driver.execute_script(_UPDATE_JS, message)
+		page.evaluate(_UPDATE_JS, message)
 	except Exception:
 		pass
 
 
-def hide_status(driver) -> None:
+def hide_status(page) -> None:
 	"""ステータスバーを非表示にしてタイトルを復元"""
 	try:
-		driver.execute_script(_HIDE_JS)
-	except Exception:
-		pass
-
-
-def auto_hide_status(driver, delay_ms: int = 5000) -> None:
-	"""指定時間後にステータスバーを自動的に非表示にする"""
-	try:
-		driver.execute_script(_AUTO_HIDE_JS, delay_ms)
+		page.evaluate(_HIDE_JS)
 	except Exception:
 		pass
