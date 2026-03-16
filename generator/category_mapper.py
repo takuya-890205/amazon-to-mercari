@@ -119,10 +119,12 @@ class CategoryMapper:
 		)
 
 		try:
-			import google.generativeai as genai
-			genai.configure(api_key=api_key)
-			model = genai.GenerativeModel("gemini-2.0-flash")
-			response = model.generate_content(prompt)
+			from google import genai
+			client = genai.Client(api_key=api_key)
+			response = client.models.generate_content(
+				model="gemini-2.5-flash",
+				contents=prompt,
+			)
 			text = response.text.strip()
 
 			start = text.find("{")

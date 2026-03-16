@@ -16,9 +16,31 @@ from scraper.user_agents import get_headers
 class AmazonScraper:
 	"""Amazon.co.jpから商品情報を取得（requests + BeautifulSoup使用）"""
 
+	MAX_RETRIES = 3
+
 	def __init__(self):
 		self.session = requests.Session()
 		self.session.headers.update(get_headers())
+		# ブラウザに近いヘッダーを追加
+		self.session.headers.update({
+			"Sec-Ch-Ua": '"Chromium";v="131", "Not_A Brand";v="24"',
+			"Sec-Ch-Ua-Mobile": "?0",
+			"Sec-Ch-Ua-Platform": '"Windows"',
+			"Sec-Fetch-Dest": "document",
+			"Sec-Fetch-Mode": "navigate",
+			"Sec-Fetch-Site": "none",
+			"Sec-Fetch-User": "?1",
+		})
+		# トップページでクッキーを取得
+		self._init_session()
+
+	def _init_session(self):
+		"""トップページにアクセスしてセッションクッキーを取得"""
+		try:
+			self.session.get("https://www.amazon.co.jp/", timeout=REQUEST_TIMEOUT)
+			time.sleep(1)
+		except Exception:
+			pass
 
 	def scrape(self, url: str) -> AmazonProduct:
 		"""URLから商品情報を取得"""
@@ -97,11 +119,36 @@ class AmazonScraper:
 		raise ValueError(f"URLからASINを抽出できません: {url}")
 
 	def _fetch_page(self, url: str) -> str:
-		"""requestsでページを取得"""
-		response = self.session.get(url, timeout=REQUEST_TIMEOUT)
-		response.raise_for_status()
-		response.encoding = response.apparent_encoding
-		return response.text
+		"""requestsでページを取得（リトライ付き）"""
+		last_error = None
+		for attempt in range(self.MAX_RETRIES):
+			if attempt > 0:
+				# リトライ時はUser-Agentをローテーション
+				self.session.headers.update(get_headers())
+				time.sleep(2 * attempt)
+
+			try:
+				response = self.session.get(url, timeout=REQUEST_TIMEOUT)
+				response.encoding = response.apparent_encoding
+
+				# ボット検出チェック
+				if response.status_code == 503 or "captcha" in response.text.lower():
+					last_error = "Amazonにアクセスがブロックされました（CAPTCHA）"
+					continue
+				if response.status_code == 404 and "自動化されたデータ" in response.text:
+					last_error = (
+						"Amazonのボット対策によりアクセスがブロックされました。\n"
+						"しばらく時間を置いてから再試行してください。\n"
+						"VPN/プロキシ環境では発生しやすい問題です。"
+					)
+					continue
+
+				response.raise_for_status()
+				return response.text
+			except requests.RequestException as e:
+				last_error = str(e)
+
+		raise RuntimeError(last_error or "ページの取得に失敗しました")
 
 	def _parse_product(self, html: str, url: str, asin: str) -> AmazonProduct:
 		"""HTMLをパースしてAmazonProductに変換"""

@@ -10,6 +10,9 @@ from scraper.product_data import AmazonProduct, MercariDraft
 
 load_dotenv()
 
+# デフォルトモデル（無料枠で高速）
+GEMINI_MODEL = "gemini-2.5-flash"
+
 
 class ListingGenerator:
 	"""Gemini API経由でメルカリ出品テキストを一括生成"""
@@ -53,9 +56,13 @@ class ListingGenerator:
 		# JSONパース
 		result = self._parse_response(response_text)
 
+		# タイトル40文字、説明文1000文字を保証
+		title = result.get("title", product.title)[:40]
+		description = result.get("description", "")[:1000]
+
 		return MercariDraft(
-			title=result.get("title", product.title[:40]),
-			description=result.get("description", ""),
+			title=title,
+			description=description,
 			category=result.get("category", product.category_breadcrumb[:3]),
 			brand=product.brand or "",
 			condition=condition,
@@ -65,17 +72,12 @@ class ListingGenerator:
 
 	def _call_gemini(self, prompt: str) -> str:
 		"""Gemini APIを呼び出してテキスト生成"""
-		import google.generativeai as genai
+		from google import genai
 
-		genai.configure(api_key=self.api_key)
-		model = genai.GenerativeModel("gemini-2.0-flash")
-
-		response = model.generate_content(
-			prompt,
-			generation_config=genai.types.GenerationConfig(
-				temperature=0.7,
-				max_output_tokens=2048,
-			),
+		client = genai.Client(api_key=self.api_key)
+		response = client.models.generate_content(
+			model=GEMINI_MODEL,
+			contents=prompt,
 		)
 
 		return response.text
