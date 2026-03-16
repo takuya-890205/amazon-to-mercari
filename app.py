@@ -341,7 +341,7 @@ if product and draft:
 
 	# --- アクションボタン ---
 	st.divider()
-	action_cols = st.columns(3)
+	action_cols = st.columns(4)
 
 	with action_cols[0]:
 		if st.button("📋 テキストをコピー", use_container_width=True):
@@ -373,6 +373,36 @@ if product and draft:
 			mime="text/plain",
 			use_container_width=True,
 		)
+
+	with action_cols[3]:
+		# Playwright がインストール済みか確認
+		try:
+			import playwright
+			_pw_available = True
+		except ImportError:
+			_pw_available = False
+
+		if _pw_available:
+			if st.button("🛒 メルカリに転記", use_container_width=True):
+				# 選択された画像のみをドラフトに設定
+				if draft.image_paths and "selected_images" in st.session_state:
+					draft.image_paths = [
+						p for p, sel in zip(draft.image_paths, st.session_state.selected_images) if sel
+					]
+				progress_container = st.empty()
+				try:
+					def update_progress(msg):
+						progress_container.info(f"⏳ {msg}")
+
+					from output.mercari_filler import MercariFiller
+					filler = MercariFiller(on_progress=update_progress)
+					filler.fill_listing(draft, wait_for_close=False)
+					progress_container.success("メルカリ出品フォームに入力しました。内容を確認して出品してください。")
+				except Exception as e:
+					progress_container.error(f"自動入力エラー: {e}")
+		else:
+			st.button("🛒 メルカリに転記", use_container_width=True, disabled=True,
+				help="pip install playwright && playwright install chromium を実行してください")
 
 elif not st.session_state.product:
 	st.info("サイドバーにAmazon商品URLを入力してください。")

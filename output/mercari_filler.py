@@ -1,13 +1,12 @@
 """Playwrightでメルカリ出品フォームに自動入力"""
 
 import os
+import sys
+import subprocess
 import time
 from pathlib import Path
 
-from playwright.sync_api import sync_playwright
-
 from scraper.product_data import MercariDraft
-from utils.browser_overlay import show_status, hide_status
 
 # メルカリ出品ページURL
 MERCARI_SELL_URL = "https://jp.mercari.com/sell/create"
@@ -16,18 +15,26 @@ MERCARI_SELL_URL = "https://jp.mercari.com/sell/create"
 WAIT_TIMEOUT = 15000  # ms
 INPUT_DELAY = 0.5
 
-# Windows側Chromeのパス候補
-_CHROME_PATHS = [
-	"/mnt/c/Program Files/Google/Chrome/Application/chrome.exe",
-	"/mnt/c/Program Files (x86)/Google/Chrome/Application/chrome.exe",
-]
+
+def _is_wsl() -> bool:
+	"""WSL環境かどうかを判定"""
+	try:
+		with open("/proc/version", "r") as f:
+			return "microsoft" in f.read().lower()
+	except Exception:
+		return False
 
 
-def _find_chrome() -> str:
-	for p in _CHROME_PATHS:
+def _find_windows_chrome() -> str:
+	"""Windows側Chromeのパスを探す"""
+	paths = [
+		"/mnt/c/Program Files/Google/Chrome/Application/chrome.exe",
+		"/mnt/c/Program Files (x86)/Google/Chrome/Application/chrome.exe",
+	]
+	for p in paths:
 		if os.path.exists(p):
 			return p
-	raise FileNotFoundError("Windows側のChromeが見つかりません")
+	return ""
 
 
 class MercariFiller:
@@ -36,17 +43,17 @@ class MercariFiller:
 	def __init__(self, on_progress=None):
 		self.page = None
 		self.browser = None
+		self.context = None
 		self.playwright = None
 		self._on_progress = on_progress or (lambda msg: None)
 
 	def _progress(self, message: str) -> None:
 		print(message)
 		self._on_progress(message)
-		if self.page:
-			show_status(self.page, message)
 
 	def _launch_browser(self):
-		chrome_path = _find_chrome()
+		from playwright.sync_api import sync_playwright
+
 		profile_dir = os.path.join(
 			os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
 			"chrome_profile_pw",
@@ -54,26 +61,126 @@ class MercariFiller:
 		os.makedirs(profile_dir, exist_ok=True)
 
 		self.playwright = sync_playwright().start()
-		context = self.playwright.chromium.launch_persistent_context(
-			user_data_dir=profile_dir,
-			executable_path=chrome_path,
+
+		if _is_wsl():
+			# WSL環境: CDP接続方式でWindows Chromeに接続
+			self._launch_wsl_chrome(profile_dir)
+		elif sys.platform == "win32":
+			# Windows環境: persistent_contextで直接起動
+			self._launch_windows_chrome(profile_dir)
+		else:
+			# Linux/Mac: Playwright内蔵Chromiumを使用
+			self._launch_builtin_chromium()
+
+	def _launch_windows_chrome(self, profile_dir: str):
+		"""Windows環境: persistent_contextで起動"""
+		chrome_path = None
+		import shutil
+		for name in ["chrome.exe", "chrome"]:
+			found = shutil.which(name)
+			if found:
+				chrome_path = found
+				break
+		if not chrome_path:
+			# デフォルトパス
+			default = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+			if os.path.exists(default):
+				chrome_path = default
+
+		kwargs = {
+			"user_data_dir": profile_dir,
+			"headless": False,
+			"args": [
+				"--disable-blink-features=AutomationControlled",
+				"--no-sandbox",
+			],
+			"viewport": {"width": 1280, "height": 900},
+			"timeout": 30000,
+		}
+		if chrome_path:
+			kwargs["executable_path"] = chrome_path
+
+		self.context = self.playwright.chromium.launch_persistent_context(**kwargs)
+		self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
+
+	def _launch_wsl_chrome(self, profile_dir: str):
+		"""WSL環境: Windows Chromeを--remote-debugging-portで起動しCDP接続"""
+		chrome_path = _find_windows_chrome()
+		if not chrome_path:
+			raise RuntimeError("Windows側のChromeが見つかりません")
+
+		# Windowsパスに変換
+		win_profile = subprocess.check_output(
+			["wslpath", "-w", profile_dir], text=True
+		).strip()
+
+		port = 9222
+		# 既に起動済みかチェック
+		import urllib.request
+		try:
+			urllib.request.urlopen(f"http://localhost:{port}/json/version", timeout=2)
+			already_running = True
+		except Exception:
+			already_running = False
+
+		if not already_running:
+			subprocess.Popen(
+				[
+					chrome_path,
+					f"--remote-debugging-port={port}",
+					f"--user-data-dir={win_profile}",
+					"--disable-blink-features=AutomationControlled",
+					"--no-first-run",
+					"--no-default-browser-check",
+					"about:blank",
+				],
+				stdout=subprocess.DEVNULL,
+				stderr=subprocess.DEVNULL,
+			)
+			# 起動待機
+			for _ in range(10):
+				time.sleep(1)
+				try:
+					urllib.request.urlopen(f"http://localhost:{port}/json/version", timeout=2)
+					break
+				except Exception:
+					continue
+			else:
+				raise RuntimeError(
+					"Chrome のデバッグポートに接続できません。\n"
+					"Chromeを全て閉じてから再試行してください。"
+				)
+
+		self.browser = self.playwright.chromium.connect_over_cdp(
+			f"http://localhost:{port}", timeout=15000
+		)
+		self.context = self.browser.contexts[0]
+		self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
+
+	def _launch_builtin_chromium(self):
+		"""Playwright内蔵Chromiumで起動"""
+		self.browser = self.playwright.chromium.launch(
 			headless=False,
 			args=[
 				"--disable-blink-features=AutomationControlled",
 				"--no-sandbox",
 			],
-			viewport={"width": 1280, "height": 900},
 		)
-		self.browser = context
-		self.page = context.pages[0] if context.pages else context.new_page()
+		self.context = self.browser.new_context(viewport={"width": 1280, "height": 900})
+		self.page = self.context.new_page()
 
 	def fill_listing(self, draft: MercariDraft, wait_for_close: bool = True) -> None:
 		"""メルカリ出品フォームに情報を入力"""
 		try:
+			self._progress("ブラウザを起動中...")
 			self._launch_browser()
 
-			self.page.goto(MERCARI_SELL_URL)
-			self.page.wait_for_load_state("networkidle")
+			self._progress("メルカリ出品ページを開いています...")
+			self.page.goto(MERCARI_SELL_URL, wait_until="domcontentloaded", timeout=30000)
+			try:
+				self.page.wait_for_load_state("networkidle", timeout=15000)
+			except Exception:
+				pass
 			time.sleep(2)
 			self._progress("メルカリ出品ページを読み込みました")
 
@@ -145,10 +252,20 @@ class MercariFiller:
 			raise
 		finally:
 			if wait_for_close:
-				if self.browser:
-					self.browser.close()
-				if self.playwright:
-					self.playwright.stop()
+				self._cleanup()
+
+	def _cleanup(self):
+		"""ブラウザリソースを解放"""
+		try:
+			if self.browser:
+				self.browser.close()
+		except Exception:
+			pass
+		try:
+			if self.playwright:
+				self.playwright.stop()
+		except Exception:
+			pass
 
 	def _disable_ai_assist(self) -> None:
 		"""「商品名と説明文を自動入力」トグルをOFFにする"""
@@ -195,7 +312,6 @@ class MercariFiller:
 
 	def _close_image_modal(self) -> None:
 		"""画像アップロード後のモーダルを処理"""
-		# 「次へ」ボタン
 		try:
 			next_btn = self.page.wait_for_selector("button:has-text('次へ')", timeout=5000)
 			if next_btn:
@@ -205,7 +321,6 @@ class MercariFiller:
 		except Exception:
 			pass
 
-		# AI出品サポートの「スキップ」
 		try:
 			time.sleep(1)
 			skip_btn = self.page.query_selector("text=スキップ")
@@ -235,7 +350,6 @@ class MercariFiller:
 	def _select_condition(self, condition: str) -> None:
 		"""商品の状態を選択"""
 		try:
-			# 「商品の状態を選択する」リンクをクリック
 			cond_link = self.page.query_selector('[data-testid="item-condition"] a')
 			if not cond_link:
 				cond_link = self.page.query_selector("a:has-text('商品の状態を選択する')")
@@ -245,7 +359,6 @@ class MercariFiller:
 				cond_link.click()
 				time.sleep(2)
 
-				# 状態名を含むリンクをクリック
 				links = self.page.query_selector_all('a[href*="sell/conditions"]')
 				for link in links:
 					link_text = link.text_content().strip()
@@ -254,12 +367,12 @@ class MercariFiller:
 						time.sleep(0.3)
 						link.click()
 						self._wait_for_sell_create(10)
-						print(f"  商品の状態を選択しました: {condition}")
+						self._progress(f"  商品の状態を選択しました: {condition}")
 						return
-				print(f"  商品の状態「{condition}」が見つかりませんでした")
+				self._progress(f"  商品の状態「{condition}」が見つかりませんでした")
 				self._wait_for_sell_create(60)
 		except Exception as e:
-			print(f"  商品の状態選択エラー: {e}")
+			self._progress(f"  商品の状態選択エラー: {e}")
 
 	def _select_dropdown(self, name: str, value: str) -> None:
 		"""select要素から値を選択"""
@@ -270,18 +383,17 @@ class MercariFiller:
 			if select_el:
 				select_el.scroll_into_view_if_needed()
 				time.sleep(0.3)
-				# optionのテキストで選択
 				options = self.page.query_selector_all(f'select[name="{name}"] option')
 				for opt in options:
 					opt_text = opt.text_content().strip()
 					if opt_text == value or value in opt_text:
 						select_el.select_option(label=opt_text)
 						time.sleep(INPUT_DELAY)
-						print(f"  {name} を選択しました: {opt_text}")
+						self._progress(f"  {name} を選択しました: {opt_text}")
 						return
-				print(f"  {name} の選択肢「{value}」が見つかりませんでした")
+				self._progress(f"  {name} の選択肢「{value}」が見つかりませんでした")
 		except Exception as e:
-			print(f"  {name} 選択エラー: {e}")
+			self._progress(f"  {name} 選択エラー: {e}")
 
 	def _select_shipping_method(self, method: str) -> None:
 		"""配送の方法を選択"""
@@ -295,7 +407,6 @@ class MercariFiller:
 				link.click()
 				time.sleep(2)
 
-				# ラジオボタンのラベルから選択
 				labels = self.page.query_selector_all("label, [role='radio']")
 				for label in labels:
 					text = label.text_content().strip()
