@@ -53,13 +53,60 @@ template = load_template()
 with st.sidebar:
 	st.header("設定")
 
+	# ファイル経由で購入履歴から選んだURLを受け取る
+	_selected_url_file = Path(__file__).parent / "data" / ".selected_amazon_url"
+
+	# 購入履歴のポーリング中にファイルを検知したらURLを取得してrerun
+	if _selected_url_file.exists():
+		_url_from_history = _selected_url_file.read_text(encoding="utf-8").strip()
+		_selected_url_file.unlink()
+		if _url_from_history:
+			st.session_state.amazon_url_from_history = _url_from_history
+			st.session_state.waiting_for_history = False
+			st.rerun()
+
+	# セッション状態にURLがあればtext_inputのデフォルト値にする
+	_default_url = st.session_state.pop("amazon_url_from_history", "")
 	amazon_url = st.text_input(
 		"Amazon商品URL",
+		value=_default_url,
 		placeholder="https://www.amazon.co.jp/dp/XXXXXXXXXX",
 	)
-	st.markdown("[Amazon購入履歴を開く](https://www.amazon.co.jp/gp/your-account/order-history)")
 
-	fetch_button = st.button("下書き生成開始", use_container_width=True, type="primary",
+	if st.button("📦 購入履歴から選ぶ", use_container_width=True):
+		import subprocess as _sp
+		runner_path = str(Path(__file__).parent / "scraper" / "amazon_history_runner.py")
+		env = os.environ.copy()
+		env["PYTHONIOENCODING"] = "utf-8"
+		_sp.Popen(
+			[sys.executable, "-X", "utf8", runner_path, "8501"],
+			stdout=_sp.DEVNULL,
+			stderr=_sp.DEVNULL,
+			stdin=_sp.DEVNULL,
+			env=env,
+			creationflags=_sp.DETACHED_PROCESS if sys.platform == "win32" else 0,
+		)
+		st.session_state.waiting_for_history = True
+		st.rerun()
+
+	# 購入履歴からの選択を待機中：ファイルを1秒ごとにポーリング
+	if st.session_state.get("waiting_for_history", False):
+		st.info("Amazon購入履歴をブラウザで開いています。商品の「出品する」ボタンをクリックしてください。")
+
+		@st.fragment(run_every=1)
+		def _poll_selected_url():
+			if _selected_url_file.exists():
+				_url = _selected_url_file.read_text(encoding="utf-8").strip()
+				_selected_url_file.unlink()
+				if _url:
+					st.session_state.amazon_url_from_history = _url
+					st.session_state.waiting_for_history = False
+					st.rerun()
+		_poll_selected_url()
+
+	# 自動生成開始: URLが購入履歴から来た場合は自動でフェッチ開始
+	_auto_fetch = bool(_default_url and ("amazon.co.jp" in _default_url or "amzn" in _default_url))
+	fetch_button = _auto_fetch or st.button("下書き生成開始", use_container_width=True, type="primary",
 		disabled=not (amazon_url and ("amazon.co.jp" in amazon_url or "amzn" in amazon_url)))
 
 	st.divider()
