@@ -57,7 +57,16 @@ class ListingGenerator:
 		result = self._parse_response(response_text)
 
 		# タイトル40文字、説明文1000文字を保証
-		title = result.get("title", product.title)[:40]
+		title = result.get("title", product.title)
+		if len(title) > 40:
+			# 40文字以内で意味が通る位置で切る
+			title = title[:40]
+			# スペースや区切り文字の位置で切り直す
+			for sep in [" ", "　", "/", "・", "｜", "|"]:
+				pos = title.rfind(sep)
+				if 20 <= pos:
+					title = title[:pos]
+					break
 		description = result.get("description", "")[:1000]
 
 		return MercariDraft(

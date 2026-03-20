@@ -57,12 +57,10 @@ with st.sidebar:
 		"Amazon商品URL",
 		placeholder="https://www.amazon.co.jp/dp/XXXXXXXXXX",
 	)
+	st.markdown("[Amazon購入履歴を開く](https://www.amazon.co.jp/gp/your-account/order-history)")
 
-	# URL入力で自動取得
-	fetch_button = False
-	if amazon_url and amazon_url != st.session_state.last_fetched_url:
-		if "amazon.co.jp" in amazon_url or "amzn" in amazon_url:
-			fetch_button = True
+	fetch_button = st.button("下書き生成開始", use_container_width=True, type="primary",
+		disabled=not (amazon_url and ("amazon.co.jp" in amazon_url or "amzn" in amazon_url)))
 
 	st.divider()
 
@@ -391,15 +389,54 @@ if product and draft:
 					]
 				progress_container = st.empty()
 				try:
-					def update_progress(msg):
-						progress_container.info(f"⏳ {msg}")
+					import json as _json
+					import subprocess as _sp
+					from dataclasses import asdict
 
-					from output.mercari_filler import MercariFiller
-					filler = MercariFiller(on_progress=update_progress)
-					filler.fill_listing(draft, wait_for_close=False)
-					progress_container.success("メルカリ出品フォームに入力しました。内容を確認して出品してください。")
+					draft_json = _json.dumps(asdict(draft), ensure_ascii=False, default=str)
+					runner_path = str(Path(__file__).parent / "output" / "mercari_runner.py")
+
+					progress_container.info("⏳ ブラウザを起動中...")
+					env = os.environ.copy()
+					env["PYTHONIOENCODING"] = "utf-8"
+					proc = _sp.Popen(
+						[sys.executable, "-X", "utf8", runner_path, draft_json],
+						stdout=_sp.PIPE,
+						stderr=_sp.PIPE,
+						text=True,
+						encoding="utf-8",
+						errors="replace",
+						env=env,
+					)
+
+					# サブプロセスの出力をリアルタイム表示
+					success = False
+					error_lines = []
+					for line in proc.stdout:
+						line = line.strip()
+						if line.startswith("PROGRESS:"):
+							progress_container.info(f"⏳ {line[9:]}")
+						elif line.startswith("DONE:"):
+							success = True
+							break
+						elif line.startswith("ERROR:"):
+							error_lines.append(line[6:])
+
+					if success:
+						# サブプロセスはブラウザを開いたまま維持する（ユーザーが閉じるまで）
+						progress_container.success("メルカリ出品フォームに入力しました。内容を確認して出品してください。")
+					else:
+						proc.wait()
+						stderr = proc.stderr.read()
+						error_msg = "\n".join(error_lines) or stderr or "不明なエラー"
+						progress_container.error(f"自動入力エラー")
+						if stderr:
+							st.code(stderr, language="text")
 				except Exception as e:
+					import traceback
+					error_detail = traceback.format_exc()
 					progress_container.error(f"自動入力エラー: {e}")
+					st.code(error_detail, language="text")
 		else:
 			st.button("🛒 メルカリに転記", use_container_width=True, disabled=True,
 				help="pip install playwright && playwright install chromium を実行してください")

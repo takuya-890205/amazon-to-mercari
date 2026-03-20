@@ -16,9 +16,8 @@ def calculate_price(
 	shipping_size: str = "60サイズ",
 ) -> PriceBreakdown:
 	"""Amazon価格からメルカリ出品価格を計算"""
-	# 状態別の価格倍率
-	ratio = CONDITION_PRICE_RATIO.get(condition, 0.70)
-	suggested = int(amazon_price * ratio)
+	# Amazon販売価格をそのまま出品価格にする
+	suggested = amazon_price
 
 	# 送料を取得
 	method_costs = SHIPPING_METHODS.get(shipping_method, {})
@@ -50,10 +49,8 @@ def suggest_price_range(
 	condition: str = "新品、未使用",
 ) -> tuple[int, int, int]:
 	"""最低価格、推奨価格、最高価格の3段階を提案"""
-	ratio = CONDITION_PRICE_RATIO.get(condition, 0.70)
-	recommended = int(amazon_price * ratio)
-
-	# 最低: 推奨の80%、最高: 推奨の120%
+	# Amazon販売価格を基準に、±20%の範囲を提案
+	recommended = amazon_price
 	low = max(int(recommended * 0.80), MERCARI_PRICE_MIN)
 	high = int(recommended * 1.20)
 

@@ -18,6 +18,9 @@ INPUT_DELAY = 0.5
 
 def _is_wsl() -> bool:
 	"""WSL環境かどうかを判定"""
+	# Windowsネイティブなら確実にWSLではない
+	if sys.platform == "win32":
+		return False
 	try:
 		with open("/proc/version", "r") as f:
 			return "microsoft" in f.read().lower()
@@ -100,8 +103,13 @@ class MercariFiller:
 		if chrome_path:
 			kwargs["executable_path"] = chrome_path
 
-		self.context = self.playwright.chromium.launch_persistent_context(**kwargs)
-		self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
+		try:
+			self.context = self.playwright.chromium.launch_persistent_context(**kwargs)
+			self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
+		except Exception as e:
+			self._progress(f"  Chrome起動失敗（{e}）、内蔵Chromiumで再試行...")
+			# Chromeがロック中等の場合、内蔵Chromiumにフォールバック
+			self._launch_builtin_chromium()
 
 	def _launch_wsl_chrome(self, profile_dir: str):
 		"""WSL環境: Windows Chromeを--remote-debugging-portで起動しCDP接続"""
@@ -158,16 +166,24 @@ class MercariFiller:
 		self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
 
 	def _launch_builtin_chromium(self):
-		"""Playwright内蔵Chromiumで起動"""
-		self.browser = self.playwright.chromium.launch(
+		"""Playwright内蔵Chromiumで起動（プロファイル付き）"""
+		profile_dir = os.path.join(
+			os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+			"chromium_profile_pw",
+		)
+		os.makedirs(profile_dir, exist_ok=True)
+
+		self.context = self.playwright.chromium.launch_persistent_context(
+			user_data_dir=profile_dir,
 			headless=False,
 			args=[
 				"--disable-blink-features=AutomationControlled",
 				"--no-sandbox",
 			],
+			viewport={"width": 1280, "height": 900},
+			timeout=30000,
 		)
-		self.context = self.browser.new_context(viewport={"width": 1280, "height": 900})
-		self.page = self.context.new_page()
+		self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
 
 	def fill_listing(self, draft: MercariDraft, wait_for_close: bool = True) -> None:
 		"""メルカリ出品フォームに情報を入力"""
@@ -256,6 +272,12 @@ class MercariFiller:
 
 	def _cleanup(self):
 		"""ブラウザリソースを解放"""
+		try:
+			if self.context and not self.browser:
+				# persistent_contextの場合はcontextを閉じる
+				self.context.close()
+		except Exception:
+			pass
 		try:
 			if self.browser:
 				self.browser.close()
@@ -350,35 +372,83 @@ class MercariFiller:
 	def _select_condition(self, condition: str) -> None:
 		"""商品の状態を選択"""
 		try:
-			cond_link = self.page.query_selector('[data-testid="item-condition"] a')
-			if not cond_link:
-				cond_link = self.page.query_selector("a:has-text('商品の状態を選択する')")
-			if cond_link:
-				cond_link.scroll_into_view_if_needed()
-				time.sleep(0.3)
-				cond_link.click()
-				time.sleep(2)
+			# 商品の状態リンクを探す（複数のセレクタで試行）
+			cond_link = None
+			for sel in [
+				'[data-testid="item-condition"] a',
+				"a:has-text('商品の状態を選択する')",
+				"a:has-text('商品の状態')",
+				"text=商品の状態を選択する",
+			]:
+				cond_link = self.page.query_selector(sel)
+				if cond_link:
+					break
 
-				links = self.page.query_selector_all('a[href*="sell/conditions"]')
+			if not cond_link:
+				self._progress("  商品の状態リンクが見つかりません（スキップ）")
+				return
+
+			cond_link.scroll_into_view_if_needed()
+			time.sleep(0.3)
+			cond_link.click()
+			time.sleep(3)
+
+			# 選択肢を探す（複数のセレクタパターンで試行）
+			found = False
+			for link_sel in [
+				'a[href*="sell/conditions"]',
+				'a[href*="condition"]',
+				'li a',
+				'[role="radio"]',
+				'[role="option"]',
+				'label',
+			]:
+				links = self.page.query_selector_all(link_sel)
 				for link in links:
-					link_text = link.text_content().strip()
+					link_text = (link.text_content() or "").strip()
 					if condition in link_text or link_text in condition:
 						link.scroll_into_view_if_needed()
 						time.sleep(0.3)
 						link.click()
 						self._wait_for_sell_create(10)
 						self._progress(f"  商品の状態を選択しました: {condition}")
-						return
-				self._progress(f"  商品の状態「{condition}」が見つかりませんでした")
-				self._wait_for_sell_create(60)
+						found = True
+						break
+				if found:
+					break
+
+			if not found:
+				# デバッグ用スクリーンショット保存
+				try:
+					self.page.screenshot(path="debug_condition_select.png")
+				except Exception:
+					pass
+				self._progress(f"  商品の状態「{condition}」が見つかりません（スキップ）")
+				# 戻るボタンまたはブラウザバックで出品ページに戻る
+				back_btn = self.page.query_selector("button:has-text('戻る')")
+				if back_btn:
+					back_btn.click()
+				else:
+					self.page.go_back()
+				self._wait_for_sell_create(10)
 		except Exception as e:
-			self._progress(f"  商品の状態選択エラー: {e}")
+			self._progress(f"  商品の状態選択エラー: {e}（スキップ）")
 
 	def _select_dropdown(self, name: str, value: str) -> None:
-		"""select要素から値を選択"""
+		"""select要素またはカスタムドロップダウンから値を選択"""
 		if not value:
 			return
+
+		# 表示名マッピング（name属性 → 画面上のラベル）
+		label_map = {
+			"shippingPayer": "配送料の負担",
+			"shippingFromArea": "発送元の地域",
+			"shippingDuration": "発送までの日数",
+		}
+		display_label = label_map.get(name, name)
+
 		try:
+			# 方法1: 標準の<select>要素
 			select_el = self.page.query_selector(f'select[name="{name}"]')
 			if select_el:
 				select_el.scroll_into_view_if_needed()
@@ -389,11 +459,69 @@ class MercariFiller:
 					if opt_text == value or value in opt_text:
 						select_el.select_option(label=opt_text)
 						time.sleep(INPUT_DELAY)
-						self._progress(f"  {name} を選択しました: {opt_text}")
+						self._progress(f"  {display_label} を選択しました: {opt_text}")
 						return
-				self._progress(f"  {name} の選択肢「{value}」が見つかりませんでした")
+				self._progress(f"  {display_label} の選択肢「{value}」が見つかりませんでした")
+				return
+
+			# 方法2: data-testid付きのリンク/ボタン型ドロップダウン
+			trigger = None
+			for sel in [
+				f'[data-testid="{name}"] a',
+				f'[data-testid="{name}"] button',
+				f'[data-testid="{name}"]',
+				f"a:has-text('{display_label}')",
+				f"button:has-text('{display_label}')",
+			]:
+				trigger = self.page.query_selector(sel)
+				if trigger:
+					break
+
+			# ラベルテキストから探す
+			if not trigger:
+				all_elements = self.page.query_selector_all("a, button, [role='button']")
+				for el in all_elements:
+					text = (el.text_content() or "").strip()
+					if display_label in text and len(text) < 50:
+						trigger = el
+						break
+
+			if trigger:
+				trigger.scroll_into_view_if_needed()
+				time.sleep(0.3)
+				trigger.click()
+				time.sleep(2)
+
+				# 選択肢を探す
+				found = False
+				for opt_sel in [
+					"a", "li a", "li", "[role='option']",
+					"[role='radio']", "label", "button",
+				]:
+					items = self.page.query_selector_all(opt_sel)
+					for item in items:
+						item_text = (item.text_content() or "").strip()
+						if item_text == value or (value in item_text and len(item_text) < 30):
+							item.scroll_into_view_if_needed()
+							time.sleep(0.3)
+							item.click()
+							time.sleep(1)
+							self._progress(f"  {display_label} を選択しました: {value}")
+							found = True
+							break
+					if found:
+						break
+
+				if not found:
+					self._progress(f"  {display_label}「{value}」が見つかりませんでした（スキップ）")
+					# 出品ページに戻る
+					if "sell/create" not in self.page.url:
+						self.page.go_back()
+						self._wait_for_sell_create(5)
+			else:
+				self._progress(f"  {display_label} の入力要素が見つかりません（スキップ）")
 		except Exception as e:
-			self._progress(f"  {name} 選択エラー: {e}")
+			self._progress(f"  {display_label} 選択エラー: {e}（スキップ）")
 
 	def _select_shipping_method(self, method: str) -> None:
 		"""配送の方法を選択"""
