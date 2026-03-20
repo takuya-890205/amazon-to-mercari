@@ -17,13 +17,13 @@ GEMINI_MODEL = "gemini-2.5-flash"
 class ListingGenerator:
 	"""Gemini API経由でメルカリ出品テキストを一括生成"""
 
-	def __init__(self):
-		self.api_key = os.getenv("GEMINI_API_KEY", "")
+	def __init__(self, api_key: str = ""):
+		self.api_key = api_key or os.getenv("GEMINI_API_KEY", "")
 		if not self.api_key:
 			raise RuntimeError(
 				"GEMINI_API_KEY が設定されていません。\n"
 				"1. https://aistudio.google.com/apikey でAPIキーを取得\n"
-				"2. .env ファイルに GEMINI_API_KEY=your_key を設定"
+				"2. サイドバーの「API設定」からAPIキーを入力してください"
 			)
 
 	def generate(

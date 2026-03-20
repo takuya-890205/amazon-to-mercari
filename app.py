@@ -132,6 +132,34 @@ with st.sidebar:
 	use_ai = st.checkbox("Gemini AIで説明文を生成", value=template.get("use_ai", True))
 	download_images = st.checkbox("画像をダウンロード", value=template.get("download_images", True))
 
+	# --- API設定 ---
+	st.divider()
+	_api_key_file = Path(__file__).parent / "data" / ".gemini_api_key"
+	_api_key_file.parent.mkdir(exist_ok=True)
+	_saved_key = _api_key_file.read_text(encoding="utf-8").strip() if _api_key_file.exists() else ""
+	_env_key = os.getenv("GEMINI_API_KEY", "")
+
+	with st.expander("API設定", expanded=not (_saved_key or _env_key)):
+		if _env_key and not _saved_key:
+			st.success("環境変数からAPIキーを検出済み")
+		elif _saved_key:
+			st.success("APIキー設定済み")
+
+		gemini_key_input = st.text_input(
+			"Gemini APIキー",
+			value=_saved_key,
+			type="password",
+			placeholder="AIxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+			help="https://aistudio.google.com/apikey で無料取得できます",
+		)
+		if gemini_key_input != _saved_key:
+			_api_key_file.write_text(gemini_key_input, encoding="utf-8")
+			st.success("APIキーを保存しました")
+			st.rerun()
+
+	# 有効なAPIキーを決定（UI入力 > 環境変数）
+	_active_api_key = _saved_key or _env_key
+
 	# --- テンプレート設定 ---
 	st.divider()
 	with st.expander("デフォルトテンプレート設定"):
@@ -189,7 +217,7 @@ if fetch_button and amazon_url:
 		with st.spinner("Gemini AIで出品テキストを生成中..."):
 			try:
 				from generator.listing_generator import ListingGenerator
-				generator = ListingGenerator()
+				generator = ListingGenerator(api_key=_active_api_key)
 				draft = generator.generate(
 					st.session_state.product,
 					condition=condition,
