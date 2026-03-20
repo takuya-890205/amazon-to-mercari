@@ -12,3 +12,7 @@ draft_*.json
 my_template.json
 .venv/
 venv/
+dist/
+build/
+*.spec
+chromium_profile_pw/
