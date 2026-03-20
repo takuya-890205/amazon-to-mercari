@@ -18,43 +18,47 @@ if errorlevel 1 (
 
     REM wingetが使えるか確認
     winget --version >nul 2>&1
-    if errorlevel 1 (
-        echo  [案内] Pythonを手動でインストールしてください。
+    if not errorlevel 1 (
+        echo  winget で Python をインストールしています...
+        echo  （許可を求められたら「はい」を選んでください）
         echo.
-        echo  1. 以下のURLをブラウザで開いてください:
-        echo     https://www.python.org/downloads/
-        echo.
-        echo  2. 「Download Python」ボタンをクリック
-        echo.
-        echo  3. インストーラーを実行し、
-        echo     ★「Add Python to PATH」に必ずチェック★ を入れてください
-        echo.
-        echo  4. インストール完了後、このファイルをもう一度ダブルクリックしてください
-        echo.
-        start https://www.python.org/downloads/
-        pause
-        exit /b 1
+        winget install Python.Python.3.12 --accept-package-agreements --accept-source-agreements
+        if not errorlevel 1 (
+            set "PATH=%LOCALAPPDATA%\Programs\Python\Python312;%LOCALAPPDATA%\Programs\Python\Python312\Scripts;%PATH%"
+            goto :python_check
+        )
     )
 
-    echo  winget で Python をインストールしています...
-    echo  （許可を求められたら「はい」を選んでください）
-    echo.
-    winget install Python.Python.3.12 --accept-package-agreements --accept-source-agreements
-    if errorlevel 1 (
+    REM wingetが使えない or 失敗 → インストーラーを自動ダウンロード
+    echo  Pythonインストーラーをダウンロードしています...
+    set "PYTHON_INSTALLER=%TEMP%\python_installer.exe"
+    curl -L -o "%PYTHON_INSTALLER%" https://www.python.org/ftp/python/3.12.9/python-3.12.9-amd64.exe 2>nul
+    if not exist "%PYTHON_INSTALLER%" (
+        powershell -Command "Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.12.9/python-3.12.9-amd64.exe' -OutFile '%PYTHON_INSTALLER%'" 2>nul
+    )
+
+    if not exist "%PYTHON_INSTALLER%" (
         echo.
-        echo  [エラー] Pythonのインストールに失敗しました。
+        echo  [エラー] ダウンロードに失敗しました。
         echo  https://www.python.org/downloads/ から手動でインストールしてください。
+        echo  ※「Add Python to PATH」にチェックを入れてください
         pause
         exit /b 1
     )
 
-    REM PATHを更新（再起動不要にする）
+    echo  Pythonをインストールしています...
+    echo  （少々お待ちください）
+    "%PYTHON_INSTALLER%" /quiet PrependPath=1 Include_pip=1
+    del "%PYTHON_INSTALLER%" 2>nul
+
+    REM PATHを即時反映
     set "PATH=%LOCALAPPDATA%\Programs\Python\Python312;%LOCALAPPDATA%\Programs\Python\Python312\Scripts;%PATH%"
 
+:python_check
     python --version >nul 2>&1
     if errorlevel 1 (
         echo.
-        echo  [案内] Pythonのインストールが完了しました。
+        echo  Pythonのインストールが完了しました。
         echo  PATHを反映するため、このファイルをもう一度ダブルクリックしてください。
         pause
         exit /b 0
