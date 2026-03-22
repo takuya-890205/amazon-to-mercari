@@ -159,14 +159,26 @@ def main():
 	selected_url = None
 	while selected_url is None:
 		try:
-			title = page.title()
+			# ページ遷移中はtitle()が失敗するのでリトライ
+			try:
+				title = page.title()
+			except Exception:
+				time.sleep(0.5)
+				continue
 			if title.startswith(SELECTED_PREFIX):
 				selected_url = title[len(SELECTED_PREFIX):]
 				break
 			time.sleep(0.3)
-		except Exception:
-			# ブラウザが閉じられた
+		except KeyboardInterrupt:
 			break
+		except Exception:
+			# コンテキスト自体が閉じられたかチェック
+			try:
+				page.evaluate("1")
+				time.sleep(0.5)
+			except Exception:
+				# ブラウザが本当に閉じられた
+				break
 
 	# 商品が選択された場合、ファイルにURLを書き込む（Streamlit側がポーリングで検知）
 	if selected_url:

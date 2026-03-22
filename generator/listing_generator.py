@@ -31,12 +31,22 @@ class ListingGenerator:
 		product: AmazonProduct,
 		condition: str = "新品、未使用",
 		additional_notes: str = "",
+		description_header: str = "",
+		description_footer: str = "",
 	) -> MercariDraft:
 		"""商品情報からメルカリ出品下書きを一括生成"""
 		# プロンプトを構築
 		bullet_text = "\n".join(f"・{bp}" for bp in product.bullet_points[:5])
 		spec_text = "\n".join(f"・{k}: {v}" for k, v in list(product.specifications.items())[:10])
 		category_text = " > ".join(product.category_breadcrumb) if product.category_breadcrumb else "不明"
+
+		# テンプレート指示を組み立て
+		tpl_parts = []
+		if description_header:
+			tpl_parts.append(f"説明文の冒頭に次の内容を含めてください: 「{description_header.strip()}」")
+		if description_footer:
+			tpl_parts.append(f"説明文の末尾に次の内容を含めてください: 「{description_footer.strip()}」")
+		template_instructions = "\n".join(tpl_parts) if tpl_parts else "特になし"
 
 		prompt = UNIFIED_LISTING_PROMPT.format(
 			title=product.title,
@@ -48,6 +58,7 @@ class ListingGenerator:
 			specifications=spec_text or "なし",
 			condition=condition,
 			additional_notes=f"補足: {additional_notes}" if additional_notes else "",
+			template_instructions=template_instructions,
 		)
 
 		# Gemini API呼び出し

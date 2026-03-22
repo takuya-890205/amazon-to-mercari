@@ -34,6 +34,15 @@ st.set_page_config(
 
 st.title("Amazon → メルカリ 出品下書き生成")
 
+# サイドバーをコンパクトにするCSS
+st.markdown("""<style>
+	[data-testid="stSidebar"] .block-container { padding-top: 1rem; }
+	[data-testid="stSidebar"] .stSelectbox, [data-testid="stSidebar"] .stTextInput,
+	[data-testid="stSidebar"] .stTextArea { margin-bottom: -0.5rem; }
+	[data-testid="stSidebar"] hr { margin: 0.3rem 0; }
+	[data-testid="stSidebar"] .stExpander { margin-bottom: -0.5rem; }
+</style>""", unsafe_allow_html=True)
+
 
 # --- セッション状態の初期化 ---
 if "product" not in st.session_state:
@@ -68,7 +77,7 @@ with st.sidebar:
 	# セッション状態にURLがあればtext_inputのデフォルト値にする
 	_default_url = st.session_state.pop("amazon_url_from_history", "")
 	amazon_url = st.text_input(
-		"Amazon商品URL",
+		"Amazon商品URL（Enterで開始）",
 		value=_default_url,
 		placeholder="https://www.amazon.co.jp/dp/XXXXXXXXXX",
 	)
@@ -104,79 +113,79 @@ with st.sidebar:
 					st.rerun()
 		_poll_selected_url()
 
-	# 自動生成開始: URLが購入履歴から来た場合は自動でフェッチ開始
-	_auto_fetch = bool(_default_url and ("amazon.co.jp" in _default_url or "amzn" in _default_url))
-	fetch_button = _auto_fetch or st.button("下書き生成開始", use_container_width=True, type="primary",
-		disabled=not (amazon_url and ("amazon.co.jp" in amazon_url or "amzn" in amazon_url)))
+	# URLが有効なら自動でフェッチ開始（Enterで確定された時点で発動）
+	_is_valid_url = bool(amazon_url and ("amazon.co.jp" in amazon_url or "amzn" in amazon_url))
+	_auto_fetch = _is_valid_url and (amazon_url != st.session_state.get("last_fetched_url", ""))
+	fetch_button = _auto_fetch
 
 	st.divider()
 
-	# テンプレートから初期値を取得
+	# 商品の状態
 	condition_idx = CONDITION_CHOICES.index(template["condition"]) if template["condition"] in CONDITION_CHOICES else 0
 	condition = st.selectbox("商品の状態", CONDITION_CHOICES, index=condition_idx)
 
+	# 補足コメント
+	additional_notes = st.text_area(
+		"補足コメント（AIに反映）",
+		height=68,
+		placeholder="例: 水没歴ありのジャンク品、付属品なし",
+	)
+
+	# オプション
+	col_ai, col_img = st.columns(2)
+	with col_ai:
+		use_ai = st.checkbox("AI生成", value=template.get("use_ai", True))
+	with col_img:
+		download_images = st.checkbox("画像DL", value=template.get("download_images", True))
+
+	# --- 配送設定 ---
 	method_keys = list(SHIPPING_METHODS.keys())
 	method_idx = method_keys.index(template["shipping_method"]) if template["shipping_method"] in method_keys else 0
 	shipping_method = st.selectbox("配送方法", method_keys, index=method_idx)
 
 	size_options = list(SHIPPING_METHODS[shipping_method].keys())
 	size_idx = size_options.index(template["shipping_size"]) if template["shipping_size"] in size_options else 0
-	shipping_size = st.selectbox("配送サイズ", size_options, index=size_idx)
+	shipping_size = st.selectbox("サイズ", size_options, index=size_idx)
 
-	pref_idx = PREFECTURES.index(template["shipping_from"]) if template["shipping_from"] in PREFECTURES else 12
-	shipping_from = st.selectbox("発送元", PREFECTURES, index=pref_idx)
+	with st.expander("発送元・日数"):
+		pref_idx = PREFECTURES.index(template["shipping_from"]) if template["shipping_from"] in PREFECTURES else 12
+		shipping_from = st.selectbox("発送元", PREFECTURES, index=pref_idx)
 
-	days_idx = SHIPPING_DAYS_CHOICES.index(template["shipping_days"]) if template["shipping_days"] in SHIPPING_DAYS_CHOICES else 1
-	shipping_days = st.selectbox("発送までの日数", SHIPPING_DAYS_CHOICES, index=days_idx)
+		days_idx = SHIPPING_DAYS_CHOICES.index(template["shipping_days"]) if template["shipping_days"] in SHIPPING_DAYS_CHOICES else 1
+		shipping_days = st.selectbox("発送日数", SHIPPING_DAYS_CHOICES, index=days_idx)
 
-	use_ai = st.checkbox("Gemini AIで説明文を生成", value=template.get("use_ai", True))
-	download_images = st.checkbox("画像をダウンロード", value=template.get("download_images", True))
+	# --- テンプレート・API設定（折りたたみ） ---
+	with st.expander("テンプレート・API設定"):
+		tpl_header = st.text_input(
+			"説明文ヘッダー",
+			value=template.get("description_header", ""),
+			placeholder="例: 【即日発送】【送料無料】",
+		)
+		tpl_footer = st.text_input(
+			"説明文フッター",
+			value=template.get("description_footer", ""),
+			placeholder="例: ご質問はお気軽にコメントください。",
+		)
 
-	# --- API設定 ---
-	st.divider()
-	_api_key_file = Path(__file__).parent / "data" / ".gemini_api_key"
-	_api_key_file.parent.mkdir(exist_ok=True)
-	_saved_key = _api_key_file.read_text(encoding="utf-8").strip() if _api_key_file.exists() else ""
-	_env_key = os.getenv("GEMINI_API_KEY", "")
+		st.divider()
 
-	with st.expander("API設定", expanded=not (_saved_key or _env_key)):
-		if _env_key and not _saved_key:
-			st.success("環境変数からAPIキーを検出済み")
-		elif _saved_key:
-			st.success("APIキー設定済み")
+		_api_key_file = Path(__file__).parent / "data" / ".gemini_api_key"
+		_api_key_file.parent.mkdir(exist_ok=True)
+		_saved_key = _api_key_file.read_text(encoding="utf-8").strip() if _api_key_file.exists() else ""
+		_env_key = os.getenv("GEMINI_API_KEY", "")
 
 		gemini_key_input = st.text_input(
-			"Gemini APIキー",
+			"Gemini APIキー" + (" ✅" if (_saved_key or _env_key) else ""),
 			value=_saved_key,
 			type="password",
-			placeholder="AIxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-			help="https://aistudio.google.com/apikey で無料取得できます",
+			placeholder="AIxxxxxxxxx...",
+			help="https://aistudio.google.com/apikey で無料取得",
 		)
 		if gemini_key_input != _saved_key:
 			_api_key_file.write_text(gemini_key_input, encoding="utf-8")
-			st.success("APIキーを保存しました")
 			st.rerun()
 
-	# 有効なAPIキーを決定（UI入力 > 環境変数）
-	_active_api_key = _saved_key or _env_key
-
-	# --- テンプレート設定 ---
-	st.divider()
-	with st.expander("デフォルトテンプレート設定"):
-		st.caption("ここで設定した値が次回以降のデフォルトになります")
-
-		tpl_header = st.text_area(
-			"説明文ヘッダー（冒頭に自動挿入）",
-			value=template.get("description_header", ""),
-			height=68,
-			placeholder="例: 【即日発送】【送料無料】",
-		)
-		tpl_footer = st.text_area(
-			"説明文フッター（末尾に自動挿入）",
-			value=template.get("description_footer", ""),
-			height=68,
-			placeholder="例: ご質問はお気軽にコメントください。",
-		)
+		st.divider()
 
 		if st.button("現在の設定をデフォルトとして保存", use_container_width=True):
 			new_template = {
@@ -191,12 +200,10 @@ with st.sidebar:
 				"download_images": download_images,
 			}
 			save_template(new_template)
-			st.success("デフォルト設定を保存しました")
+			st.success("保存しました")
 
-	# 閉じるボタン
-	st.divider()
-	if st.button("アプリを終了", use_container_width=True):
-		os.kill(os.getpid(), signal.SIGTERM)
+	# 有効なAPIキーを決定（UI入力 > 環境変数）
+	_active_api_key = _saved_key or _env_key
 
 
 # --- 商品情報取得 ---
@@ -221,6 +228,9 @@ if fetch_button and amazon_url:
 				draft = generator.generate(
 					st.session_state.product,
 					condition=condition,
+					additional_notes=additional_notes,
+					description_header=tpl_header,
+					description_footer=tpl_footer,
 				)
 				# 価格・配送情報を設定
 				if st.session_state.product.price:
@@ -237,14 +247,6 @@ if fetch_button and amazon_url:
 				draft.shipping_from = shipping_from
 				draft.shipping_days = shipping_days
 				draft.source_url = amazon_url
-
-				# テンプレートのヘッダー・フッターを適用
-				desc = draft.description
-				if tpl_header:
-					desc = tpl_header.strip() + "\n\n" + desc
-				if tpl_footer:
-					desc = desc.rstrip() + "\n" + tpl_footer.strip()
-				draft.description = desc[:1000]
 
 				st.session_state.draft = draft
 			except Exception as e:
