@@ -12,6 +12,7 @@ import streamlit as st
 
 from config import (
 	CONDITION_CHOICES,
+	CONDITION_PRICE_RATIO,
 	MERCARI_PRICE_MIN,
 	MERCARI_PRICE_MAX,
 	PREFECTURES,
@@ -154,6 +155,22 @@ with st.sidebar:
 		days_idx = SHIPPING_DAYS_CHOICES.index(template["shipping_days"]) if template["shipping_days"] in SHIPPING_DAYS_CHOICES else 1
 		shipping_days = st.selectbox("発送日数", SHIPPING_DAYS_CHOICES, index=days_idx)
 
+	# --- 価格割引率の設定（折りたたみ） ---
+	with st.expander("価格割引率（%）"):
+		st.caption("Amazon価格に対する出品価格の割合")
+		saved_ratios = template.get("price_ratios", {})
+		custom_ratios = {}
+		for cond in CONDITION_CHOICES:
+			default_pct = saved_ratios.get(cond, int(CONDITION_PRICE_RATIO.get(cond, 0.65) * 100))
+			custom_ratios[cond] = st.slider(
+				cond,
+				min_value=5,
+				max_value=100,
+				value=default_pct,
+				step=5,
+				format="%d%%",
+			)
+
 	# --- テンプレート・API設定（折りたたみ） ---
 	with st.expander("テンプレート・API設定"):
 		tpl_header = st.text_input(
@@ -205,6 +222,7 @@ with st.sidebar:
 				"description_footer": tpl_footer,
 				"use_ai": use_ai,
 				"download_images": download_images,
+				"price_ratios": custom_ratios,
 			}
 			save_template(new_template)
 			st.success("保存しました")
@@ -246,6 +264,7 @@ if fetch_button and amazon_url:
 						condition=condition,
 						shipping_method=shipping_method,
 						shipping_size=shipping_size,
+					custom_ratios=custom_ratios,
 					)
 					draft.price = breakdown.suggested_price
 					draft.price_breakdown = breakdown
@@ -362,7 +381,7 @@ if product and draft:
 
 		# 価格設定
 		if product.price:
-			low, mid, high = suggest_price_range(product.price, condition)
+			low, mid, high = suggest_price_range(product.price, condition, custom_ratios=custom_ratios)
 			edited_price = st.slider(
 				"出品価格",
 				min_value=MERCARI_PRICE_MIN,

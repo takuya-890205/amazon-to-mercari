@@ -9,15 +9,23 @@ from config import (
 from scraper.product_data import PriceBreakdown
 
 
+def _resolve_ratio(condition: str, custom_ratios: dict | None = None) -> float:
+	"""カスタム割引率（%整数）またはデフォルト（0〜1小数）から倍率を返す"""
+	if custom_ratios and condition in custom_ratios:
+		return custom_ratios[condition] / 100
+	return CONDITION_PRICE_RATIO.get(condition, 0.65)
+
+
 def calculate_price(
 	amazon_price: int,
 	condition: str = "新品、未使用",
 	shipping_method: str = "らくらくメルカリ便",
 	shipping_size: str = "60サイズ",
+	custom_ratios: dict | None = None,
 ) -> PriceBreakdown:
 	"""Amazon価格からメルカリ出品価格を計算"""
 	# 商品状態に応じてAmazon価格を割引
-	ratio = CONDITION_PRICE_RATIO.get(condition, 0.65)
+	ratio = _resolve_ratio(condition, custom_ratios)
 	suggested = int(amazon_price * ratio)
 
 	# 送料を取得
@@ -48,10 +56,11 @@ def calculate_price(
 def suggest_price_range(
 	amazon_price: int,
 	condition: str = "新品、未使用",
+	custom_ratios: dict | None = None,
 ) -> tuple[int, int, int]:
 	"""最低価格、推奨価格、最高価格の3段階を提案"""
 	# 商品状態に応じた推奨価格を基準に、±20%の範囲を提案
-	ratio = CONDITION_PRICE_RATIO.get(condition, 0.65)
+	ratio = _resolve_ratio(condition, custom_ratios)
 	recommended = int(amazon_price * ratio)
 	low = max(int(recommended * 0.80), MERCARI_PRICE_MIN)
 	high = int(recommended * 1.20)

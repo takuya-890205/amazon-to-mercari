@@ -145,6 +145,14 @@ DEFAULT_TEMPLATE = {
 	"description_footer": "\nご質問はお気軽にコメントください。",
 	"use_ai": True,
 	"download_images": True,
+	"price_ratios": {
+		"新品、未使用": 90,
+		"未使用に近い": 80,
+		"目立った傷や汚れなし": 65,
+		"やや傷や汚れあり": 50,
+		"傷や汚れあり": 35,
+		"全体的に状態が悪い": 20,
+	},
 }
 
 
