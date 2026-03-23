@@ -18,7 +18,8 @@ class ListingGenerator:
 	"""Gemini API経由でメルカリ出品テキストを一括生成"""
 
 	def __init__(self, api_key: str = ""):
-		self.api_key = api_key or os.getenv("GEMINI_API_KEY", "")
+		from utils.api_key import get_api_key
+		self.api_key = api_key or get_api_key()
 		if not self.api_key:
 			raise RuntimeError(
 				"GEMINI_API_KEY が設定されていません。\n"

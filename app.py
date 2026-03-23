@@ -169,20 +169,27 @@ with st.sidebar:
 
 		st.divider()
 
-		_api_key_file = Path(__file__).parent / "data" / ".gemini_api_key"
-		_api_key_file.parent.mkdir(exist_ok=True)
-		_saved_key = _api_key_file.read_text(encoding="utf-8").strip() if _api_key_file.exists() else ""
-		_env_key = os.getenv("GEMINI_API_KEY", "")
+		from utils.api_key import get_api_key, save_api_key
+		_saved_key = get_api_key()
+
+		# 旧形式（平文ファイル）からの自動マイグレーション
+		_old_key_file = Path(__file__).parent / "data" / ".gemini_api_key"
+		if _old_key_file.exists():
+			_old_key = _old_key_file.read_text(encoding="utf-8").strip()
+			if _old_key and not _saved_key:
+				save_api_key(_old_key)
+				_saved_key = _old_key
+			_old_key_file.unlink()
 
 		gemini_key_input = st.text_input(
-			"Gemini APIキー" + (" ✅" if (_saved_key or _env_key) else ""),
+			"Gemini APIキー" + (" ✅" if _saved_key else ""),
 			value=_saved_key,
 			type="password",
 			placeholder="AIxxxxxxxxx...",
 			help="https://aistudio.google.com/apikey で無料取得",
 		)
 		if gemini_key_input != _saved_key:
-			_api_key_file.write_text(gemini_key_input, encoding="utf-8")
+			save_api_key(gemini_key_input)
 			st.rerun()
 
 		st.divider()
@@ -202,8 +209,8 @@ with st.sidebar:
 			save_template(new_template)
 			st.success("保存しました")
 
-	# 有効なAPIキーを決定（UI入力 > 環境変数）
-	_active_api_key = _saved_key or _env_key
+	# 有効なAPIキーを決定
+	_active_api_key = get_api_key()
 
 
 # --- 商品情報取得 ---

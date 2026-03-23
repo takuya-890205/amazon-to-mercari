@@ -108,7 +108,8 @@ class CategoryMapper:
 
 	def map_with_ai(self, product: AmazonProduct) -> list[str]:
 		"""Gemini APIでカテゴリを推定（フォールバック用）"""
-		api_key = os.getenv("GEMINI_API_KEY", "")
+		from utils.api_key import get_api_key
+		api_key = get_api_key()
 		if not api_key:
 			return self.map_category(product)
 
