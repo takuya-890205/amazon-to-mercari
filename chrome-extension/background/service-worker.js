@@ -158,13 +158,28 @@ ${tplParts.length > 0 ? tplParts.join("\n") : "特になし"}
 【出力形式】JSON形式のみ:
 {"title":"...","description":"...","category":["大","中","小"],"hashtags":["tag1","tag2"]}`;
 
-	const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({
-			contents: [{ parts: [{ text: prompt }] }],
-		}),
-	});
+	// 60秒タイムアウト付きfetch
+	const controller = new AbortController();
+	const fetchTimeout = setTimeout(() => controller.abort(), 60000);
+
+	let response;
+	try {
+		response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				contents: [{ parts: [{ text: prompt }] }],
+			}),
+			signal: controller.signal,
+		});
+	} catch(e) {
+		clearTimeout(fetchTimeout);
+		if (e.name === "AbortError") {
+			throw new Error("Gemini APIがタイムアウトしました（60秒）。再試行してください。");
+		}
+		throw e;
+	}
+	clearTimeout(fetchTimeout);
 
 	if (!response.ok) {
 		const errorData = await response.json().catch(() => ({}));

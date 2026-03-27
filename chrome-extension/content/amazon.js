@@ -179,12 +179,26 @@
 
 			const product = scrapeProduct();
 
+			// タイムアウト（90秒）: service workerが応答しない場合の保険
+			const timeout = setTimeout(() => {
+				btn.disabled = false;
+				btn.textContent = "メルカリに出品";
+				alert("生成がタイムアウトしました。もう一度お試しください。");
+			}, 90000);
+
 			// background script にメッセージを送信
 			chrome.runtime.sendMessage(
 				{ action: "generateListing", product },
 				(response) => {
+					clearTimeout(timeout);
 					btn.disabled = false;
 					btn.textContent = "メルカリに出品";
+
+					// service workerとの通信エラー
+					if (chrome.runtime.lastError) {
+						alert(`通信エラー: ${chrome.runtime.lastError.message}\nページをリロードして再試行してください。`);
+						return;
+					}
 
 					if (response && response.success) {
 						// 生成結果をストレージに保存してメルカリページを開く
