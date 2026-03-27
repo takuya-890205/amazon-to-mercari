@@ -92,9 +92,15 @@ async function handleGenerateListing(product) {
 		};
 	}
 
+	// タイトルを40文字以内に強制（AIが超過した場合のフォールバック）
+	let title = aiResult.title || product.title.substring(0, 40);
+	if (title.length > 40) {
+		title = title.substring(0, 40);
+	}
+
 	// 下書きオブジェクトを構築
 	return {
-		title: aiResult.title || product.title.substring(0, 40),
+		title,
 		description: aiResult.description || "",
 		category: aiResult.category || [],
 		brand: product.brand || "",
@@ -149,8 +155,8 @@ ${specText}
 【テンプレート指示】
 ${tplParts.length > 0 ? tplParts.join("\n") : "特になし"}
 
-【生成ルール】
-1. タイトル: 必ず40文字以内。ブランド名+商品の種類+最大の魅力。
+【生成ルール — 厳守】
+1. タイトル: **絶対に40文字以内**（全角半角問わず1文字としてカウント）。40文字を超えるとエラーになるため、生成後に必ず文字数を数えて40文字以下であることを確認すること。超える場合は情報を削って短くすること。ブランド名+商品の種類+最大の魅力を簡潔に。
 2. 説明文: 最大1000文字。状態→付属品→概要→特徴の順。
 3. カテゴリ: メルカリの3階層 [大, 中, 小]
 4. ハッシュタグ: 5-8個
