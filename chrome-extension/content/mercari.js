@@ -47,20 +47,86 @@
 	/**
 	 * select要素の値を設定し、Reactのイベントを発火させる
 	 */
-	function selectOption(selectElement, value) {
+	function setSelectValue(selectElement, value) {
 		const nativeSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set;
 		nativeSetter.call(selectElement, value);
 		selectElement.dispatchEvent(new Event("change", { bubbles: true }));
 	}
 
 	/**
+	 * メルカリのカスタムドロップダウンから値を選択
+	 * セレクタで特定したトリガー要素をクリックし、表示されたリストからテキスト一致するアイテムをクリック
+	 */
+	async function selectFromDropdown(triggerSelector, value, label) {
+		// まずネイティブselect要素を試す
+		try {
+			const selects = document.querySelectorAll("select");
+			for (const sel of selects) {
+				for (const opt of sel.options) {
+					if (opt.text === value || opt.value === value) {
+						setSelectValue(sel, opt.value);
+						console.log(`[ATM] ${label}: ネイティブselectで設定完了`);
+						return true;
+					}
+				}
+			}
+		} catch(e) { /* ネイティブselectが無い場合は次へ */ }
+
+		// カスタムUIドロップダウンを試す: ラベルテキストで対象セクションを特定
+		try {
+			const allLabels = document.querySelectorAll("label, dt, [class*='label'], [class*='Label'], span, div");
+			let triggerEl = null;
+
+			for (const el of allLabels) {
+				const text = el.textContent.trim();
+				if (triggerSelector.some(keyword => text === keyword)) {
+					// ラベルの近くにあるボタン/選択要素を探す
+					const parent = el.closest("div[class], section, li, [class*='row'], [class*='Row'], [class*='item'], [class*='Item']") || el.parentElement;
+					if (parent) {
+						triggerEl = parent.querySelector("button, [role='button'], [role='listbox'], [role='combobox'], select, [class*='select'], [class*='Select'], [class*='dropdown'], [class*='Dropdown']");
+						if (!triggerEl) {
+							// 親要素自体がクリッカブルな場合
+							triggerEl = parent.querySelector("div[class*='value'], div[class*='Value'], span[class*='value'], span[class*='Value']");
+						}
+					}
+					if (triggerEl) break;
+				}
+			}
+
+			if (triggerEl) {
+				triggerEl.click();
+				await new Promise(r => setTimeout(r, 500));
+
+				// 開いたリストから値を選択
+				const listItems = document.querySelectorAll("[role='option'], [role='menuitem'], li, [class*='option'], [class*='Option'], [class*='menuItem'], [class*='MenuItem']");
+				for (const item of listItems) {
+					if (item.textContent.trim() === value) {
+						item.click();
+						console.log(`[ATM] ${label}: カスタムUIで設定完了`);
+						return true;
+					}
+				}
+
+				// 閉じる（選択できなかった場合）
+				document.body.click();
+			}
+		} catch(e) {
+			console.warn(`[ATM] ${label}: カスタムUI操作エラー:`, e);
+		}
+
+		console.warn(`[ATM] ${label}: 設定できませんでした（値: ${value}）`);
+		return false;
+	}
+
+	/**
 	 * 下書きデータをフォームに入力
 	 */
 	async function fillForm(draft) {
-		console.log("[ATM] フォーム自動入力を開始");
+		console.log("[ATM] フォーム自動入力を開始", draft);
 		// Next.jsのhydration完了を待つ
 		await new Promise(r => setTimeout(r, 2000));
 
+		// タイトル
 		try {
 			const titleInput = await waitForElement('input[name="name"], input[data-testid="text-input-name"]');
 			setInputValue(titleInput, draft.title);
@@ -69,6 +135,7 @@
 			console.warn("[ATM] タイトル入力欄が見つかりません:", e);
 		}
 
+		// 説明文
 		try {
 			const descInput = await waitForElement('textarea[name="description"], textarea[data-testid="textarea-description"]');
 			setInputValue(descInput, draft.description);
@@ -77,6 +144,19 @@
 			console.warn("[ATM] 説明文入力欄が見つかりません:", e);
 		}
 
+		// 商品の状態
+		if (draft.condition) {
+			await selectFromDropdown(["商品の状態"], draft.condition, "商品の状態");
+			await new Promise(r => setTimeout(r, 300));
+		}
+
+		// 発送元の地域
+		if (draft.shippingFrom) {
+			await selectFromDropdown(["発送元の地域"], draft.shippingFrom, "発送元の地域");
+			await new Promise(r => setTimeout(r, 300));
+		}
+
+		// 価格
 		if (draft.price) {
 			try {
 				const priceInput = await waitForElement('input[name="price"], input[data-testid="text-input-price"]');
@@ -84,16 +164,6 @@
 				console.log("[ATM] 価格入力完了");
 			} catch(e) {
 				console.warn("[ATM] 価格入力欄が見つかりません:", e);
-			}
-		}
-
-		if (draft.shippingFrom) {
-			try {
-				const regionSelect = await waitForElement('select[name="shippingFromArea"], select[data-testid="select-shippingFromArea"]');
-				selectOption(regionSelect, draft.shippingFrom);
-				console.log("[ATM] 発送元の地域入力完了");
-			} catch(e) {
-				console.warn("[ATM] 発送元の地域選択が見つかりません:", e);
 			}
 		}
 
