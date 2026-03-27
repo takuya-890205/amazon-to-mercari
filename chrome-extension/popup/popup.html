@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+	<meta charset="UTF-8">
+	<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+	<div class="header">
+		<h1>Amazon to メルカリ</h1>
+		<p class="subtitle">AI出品テキスト生成ツール</p>
+	</div>
+
+	<div class="section">
+		<label class="label">Gemini APIキー</label>
+		<div class="api-key-row">
+			<input type="password" id="apiKey" placeholder="AIza...">
+			<button id="toggleKey" class="btn-icon" title="表示/非表示">👁</button>
+		</div>
+		<a href="https://aistudio.google.com/apikey" target="_blank" class="link">APIキーを無料で取得 →</a>
+	</div>
+
+	<div class="section">
+		<label class="label">商品の状態</label>
+		<select id="condition">
+			<option value="新品、未使用">新品、未使用</option>
+			<option value="未使用に近い">未使用に近い</option>
+			<option value="目立った傷や汚れなし" selected>目立った傷や汚れなし</option>
+			<option value="やや傷や汚れあり">やや傷や汚れあり</option>
+			<option value="傷や汚れあり">傷や汚れあり</option>
+			<option value="全体的に状態が悪い">全体的に状態が悪い</option>
+		</select>
+	</div>
+
+	<div class="section">
+		<label class="label">配送方法</label>
+		<select id="shippingMethod">
+			<option value="らくらくメルカリ便">らくらくメルカリ便</option>
+			<option value="ゆうゆうメルカリ便">ゆうゆうメルカリ便</option>
+		</select>
+	</div>
+
+	<div class="section">
+		<label class="label">サイズ</label>
+		<select id="shippingSize">
+			<option value="ネコポス">ネコポス (210円)</option>
+			<option value="宅急便コンパクト">宅急便コンパクト (450円)</option>
+			<option value="60サイズ" selected>60サイズ (750円)</option>
+			<option value="80サイズ">80サイズ (850円)</option>
+			<option value="100サイズ">100サイズ (1,050円)</option>
+			<option value="120サイズ">120サイズ (1,200円)</option>
+			<option value="140サイズ">140サイズ (1,450円)</option>
+			<option value="160サイズ">160サイズ (1,700円)</option>
+		</select>
+	</div>
+
+	<div class="section">
+		<label class="label">発送元の地域</label>
+		<select id="shippingFrom">
+			<option value="北海道">北海道</option>
+			<option value="青森県">青森県</option>
+			<option value="岩手県">岩手県</option>
+			<option value="宮城県">宮城県</option>
+			<option value="秋田県">秋田県</option>
+			<option value="山形県">山形県</option>
+			<option value="福島県">福島県</option>
+			<option value="茨城県">茨城県</option>
+			<option value="栃木県">栃木県</option>
+			<option value="群馬県">群馬県</option>
+			<option value="埼玉県">埼玉県</option>
+			<option value="千葉県">千葉県</option>
+			<option value="東京都">東京都</option>
+			<option value="神奈川県">神奈川県</option>
+			<option value="新潟県">新潟県</option>
+			<option value="富山県">富山県</option>
+			<option value="石川県">石川県</option>
+			<option value="福井県">福井県</option>
+			<option value="山梨県">山梨県</option>
+			<option value="長野県">長野県</option>
+			<option value="岐阜県">岐阜県</option>
+			<option value="静岡県">静岡県</option>
+			<option value="愛知県">愛知県</option>
+			<option value="三重県">三重県</option>
+			<option value="滋賀県">滋賀県</option>
+			<option value="京都府">京都府</option>
+			<option value="大阪府">大阪府</option>
+			<option value="兵庫県">兵庫県</option>
+			<option value="奈良県">奈良県</option>
+			<option value="和歌山県">和歌山県</option>
+			<option value="鳥取県">鳥取県</option>
+			<option value="島根県">島根県</option>
+			<option value="岡山県">岡山県</option>
+			<option value="広島県">広島県</option>
+			<option value="山口県">山口県</option>
+			<option value="徳島県">徳島県</option>
+			<option value="香川県">香川県</option>
+			<option value="愛媛県">愛媛県</option>
+			<option value="高知県">高知県</option>
+			<option value="福岡県">福岡県</option>
+			<option value="佐賀県">佐賀県</option>
+			<option value="長崎県">長崎県</option>
+			<option value="熊本県">熊本県</option>
+			<option value="大分県">大分県</option>
+			<option value="宮崎県">宮崎県</option>
+			<option value="鹿児島県">鹿児島県</option>
+			<option value="沖縄県">沖縄県</option>
+		</select>
+	</div>
+
+	<details class="section">
+		<summary>テンプレート設定</summary>
+		<div class="details-content">
+			<label class="label">説明文ヘッダー</label>
+			<input type="text" id="descHeader" placeholder="例: 【即日発送】【送料無料】">
+			<label class="label">説明文フッター</label>
+			<input type="text" id="descFooter" placeholder="例: ご質問はお気軽にコメントください。">
+		</div>
+	</details>
+
+	<button id="saveBtn" class="btn-primary">設定を保存</button>
+	<div id="status" class="status"></div>
+
+	<div class="footer">
+		<p>Amazon商品ページで「メルカリに出品」ボタンをクリック</p>
+	</div>
+
+	<script src="popup.js"></script>
+</body>
+</html>

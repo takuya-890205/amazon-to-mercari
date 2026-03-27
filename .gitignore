@@ -6,6 +6,7 @@ downloads/
 data/
 .env
 *.html
+!chrome-extension/**/*.html
 *.png
 debug_*
 draft_*.json

@@ -45,6 +45,15 @@
 	}
 
 	/**
+	 * select要素の値を設定し、Reactのイベントを発火させる
+	 */
+	function selectOption(selectElement, value) {
+		const nativeSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set;
+		nativeSetter.call(selectElement, value);
+		selectElement.dispatchEvent(new Event("change", { bubbles: true }));
+	}
+
+	/**
 	 * 下書きデータをフォームに入力
 	 */
 	async function fillForm(draft) {
@@ -75,6 +84,16 @@
 				console.log("[ATM] 価格入力完了");
 			} catch(e) {
 				console.warn("[ATM] 価格入力欄が見つかりません:", e);
+			}
+		}
+
+		if (draft.shippingFrom) {
+			try {
+				const regionSelect = await waitForElement('select[name="shippingFromArea"], select[data-testid="select-shippingFromArea"]');
+				selectOption(regionSelect, draft.shippingFrom);
+				console.log("[ATM] 発送元の地域入力完了");
+			} catch(e) {
+				console.warn("[ATM] 発送元の地域選択が見つかりません:", e);
 			}
 		}
 
