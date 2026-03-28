@@ -228,7 +228,6 @@ function parseGeminiResponse(text) {
 		}
 	}
 
-	console.warn("[ATM] JSONパースに失敗。デフォルト値を使用。");
 	return {};
 }
 

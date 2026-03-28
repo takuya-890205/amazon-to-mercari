@@ -79,8 +79,21 @@ chrome.storage.sync.get({
 
 // --- 設定の保存 ---
 saveBtn.addEventListener("click", () => {
+	const apiKey = apiKeyInput.value.trim();
+
+	// APIキーの形式チェック
+	if (apiKey && !apiKey.startsWith("AIza")) {
+		statusEl.textContent = "APIキーの形式が正しくありません（AIza...で始まる必要があります）";
+		statusEl.className = "status error";
+		setTimeout(() => {
+			statusEl.textContent = "";
+			statusEl.className = "status";
+		}, 3000);
+		return;
+	}
+
 	const settings = {
-		apiKey: apiKeyInput.value.trim(),
+		apiKey,
 		condition: conditionSelect.value,
 		shippingMethod: shippingMethodSelect.value,
 		shippingSize: shippingSizeSelect.value,

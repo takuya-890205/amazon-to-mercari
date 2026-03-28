@@ -65,7 +65,6 @@
 				for (const opt of sel.options) {
 					if (opt.text === value || opt.value === value) {
 						setSelectValue(sel, opt.value);
-						console.log(`[ATM] ${label}: ネイティブselectで設定完了`);
 						return true;
 					}
 				}
@@ -102,7 +101,6 @@
 				for (const item of listItems) {
 					if (item.textContent.trim() === value) {
 						item.click();
-						console.log(`[ATM] ${label}: カスタムUIで設定完了`);
 						return true;
 					}
 				}
@@ -111,10 +109,8 @@
 				document.body.click();
 			}
 		} catch(e) {
-			console.warn(`[ATM] ${label}: カスタムUI操作エラー:`, e);
 		}
 
-		console.warn(`[ATM] ${label}: 設定できませんでした（値: ${value}）`);
 		return false;
 	}
 
@@ -122,7 +118,6 @@
 	 * 下書きデータをフォームに入力
 	 */
 	async function fillForm(draft) {
-		console.log("[ATM] フォーム自動入力を開始", draft);
 		// Next.jsのhydration完了を待つ
 		await new Promise(r => setTimeout(r, 2000));
 
@@ -130,18 +125,14 @@
 		try {
 			const titleInput = await waitForElement('input[name="name"], input[data-testid="text-input-name"]');
 			setInputValue(titleInput, draft.title);
-			console.log("[ATM] タイトル入力完了");
 		} catch(e) {
-			console.warn("[ATM] タイトル入力欄が見つかりません:", e);
 		}
 
 		// 説明文
 		try {
 			const descInput = await waitForElement('textarea[name="description"], textarea[data-testid="textarea-description"]');
 			setInputValue(descInput, draft.description);
-			console.log("[ATM] 説明文入力完了");
 		} catch(e) {
-			console.warn("[ATM] 説明文入力欄が見つかりません:", e);
 		}
 
 		// 商品の状態
@@ -161,9 +152,7 @@
 			try {
 				const priceInput = await waitForElement('input[name="price"], input[data-testid="text-input-price"]');
 				setInputValue(priceInput, String(draft.price));
-				console.log("[ATM] 価格入力完了");
 			} catch(e) {
-				console.warn("[ATM] 価格入力欄が見つかりません:", e);
 			}
 		}
 
@@ -269,15 +258,12 @@
 		chrome.storage.local.get("pendingDraft", (result) => {
 			if (!result.pendingDraft) return;
 
-			console.log("[ATM] 下書きデータ検出。現在のパス:", location.pathname);
 
 			if (isOnListingForm()) {
 				// 出品フォームにいる → 自動入力
-				console.log("[ATM] 出品フォーム検出、自動入力開始");
 				fillForm(result.pendingDraft);
 			} else {
 				// 出品フォーム以外 → 案内バナー表示
-				console.log("[ATM] 出品フォーム外、通知バナー表示");
 				showPendingDraftBanner();
 			}
 		});

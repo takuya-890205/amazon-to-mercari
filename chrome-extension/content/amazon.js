@@ -250,6 +250,15 @@
 			const product = scrapeProduct();
 			const notes = notesInput.value.trim();
 
+			// 商品情報の最低限バリデーション
+			if (!product.title) {
+				btn.disabled = false;
+				btn.textContent = "出品テキストを生成";
+				btn.classList.remove("generating");
+				alert("商品情報を取得できませんでした。ページを再読み込みしてお試しください。");
+				return;
+			}
+
 			// タイムアウト（90秒）: service workerが応答しない場合の保険
 			const resetBtn = () => {
 				btn.disabled = false;
