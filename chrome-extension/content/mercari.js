@@ -108,8 +108,7 @@
 				// 閉じる（選択できなかった場合）
 				document.body.click();
 			}
-		} catch(e) {
-		}
+		} catch(e) { /* カスタムUI操作失敗時はfalseを返して続行 */ }
 
 		return false;
 	}
@@ -125,15 +124,13 @@
 		try {
 			const titleInput = await waitForElement('input[name="name"], input[data-testid="text-input-name"]');
 			setInputValue(titleInput, draft.title);
-		} catch(e) {
-		}
+		} catch(e) { /* 要素未検出時はスキップ */ }
 
 		// 説明文
 		try {
 			const descInput = await waitForElement('textarea[name="description"], textarea[data-testid="textarea-description"]');
 			setInputValue(descInput, draft.description);
-		} catch(e) {
-		}
+		} catch(e) { /* 要素未検出時はスキップ */ }
 
 		// 商品の状態
 		if (draft.condition) {
@@ -152,8 +149,7 @@
 			try {
 				const priceInput = await waitForElement('input[name="price"], input[data-testid="text-input-price"]');
 				setInputValue(priceInput, String(draft.price));
-			} catch(e) {
-			}
+			} catch(e) { /* 要素未検出時はスキップ */ }
 		}
 
 		// pendingDraftを削除して完了通知

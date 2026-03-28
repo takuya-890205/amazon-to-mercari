@@ -77,18 +77,25 @@ chrome.storage.sync.get({
 	descFooterInput.value = settings.descriptionFooter;
 });
 
+// --- ステータス表示 ---
+let statusTimer = null;
+function showStatus(message, type, duration = 2000) {
+	clearTimeout(statusTimer);
+	statusEl.textContent = message;
+	statusEl.className = `status ${type}`;
+	statusTimer = setTimeout(() => {
+		statusEl.textContent = "";
+		statusEl.className = "status";
+	}, duration);
+}
+
 // --- 設定の保存 ---
 saveBtn.addEventListener("click", () => {
 	const apiKey = apiKeyInput.value.trim();
 
 	// APIキーの形式チェック
 	if (apiKey && !apiKey.startsWith("AIza")) {
-		statusEl.textContent = "APIキーの形式が正しくありません（AIza...で始まる必要があります）";
-		statusEl.className = "status error";
-		setTimeout(() => {
-			statusEl.textContent = "";
-			statusEl.className = "status";
-		}, 3000);
+		showStatus("APIキーの形式が正しくありません（AIza...で始まる必要があります）", "error", 3000);
 		return;
 	}
 
@@ -103,11 +110,6 @@ saveBtn.addEventListener("click", () => {
 	};
 
 	chrome.storage.sync.set(settings, () => {
-		statusEl.textContent = "保存しました";
-		statusEl.className = "status success";
-		setTimeout(() => {
-			statusEl.textContent = "";
-			statusEl.className = "status";
-		}, 2000);
+		showStatus("保存しました", "success");
 	});
 });
