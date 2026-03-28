@@ -144,6 +144,25 @@
 
 		shadow.innerHTML = `
 			<style>
+				* { box-sizing: border-box; font-family: "Hiragino Sans", "Yu Gothic", sans-serif; }
+				textarea {
+					all: initial;
+					font-family: "Hiragino Sans", "Yu Gothic", sans-serif;
+					width: 100%;
+					min-height: 36px;
+					padding: 8px 10px;
+					border: 1px solid #ccc;
+					border-radius: 6px;
+					font-size: 13px;
+					line-height: 1.4;
+					resize: vertical;
+					display: block;
+					box-sizing: border-box;
+					margin-bottom: 8px;
+					color: #333;
+				}
+				textarea::placeholder { color: #999; }
+				textarea:focus { outline: none; border-color: #FF0211; }
 				button {
 					all: initial;
 					background: #FF0211;
@@ -168,16 +187,19 @@
 				button:hover { opacity: 0.85; }
 				button:disabled { opacity: 0.6; cursor: wait; }
 			</style>
+			<textarea id="atm-notes" placeholder="特記事項（例: 水没品のためジャンク扱い、箱なし、動作未確認 等）" rows="2"></textarea>
 			<button id="atm-btn">メルカリに出品</button>
 		`;
 
 		const btn = shadow.getElementById("atm-btn");
+		const notesInput = shadow.getElementById("atm-notes");
 
 		btn.addEventListener("click", async () => {
 			btn.disabled = true;
 			btn.textContent = "生成中...";
 
 			const product = scrapeProduct();
+			const notes = notesInput.value.trim();
 
 			// タイムアウト（90秒）: service workerが応答しない場合の保険
 			const timeout = setTimeout(() => {
@@ -188,7 +210,7 @@
 
 			// background script にメッセージを送信
 			chrome.runtime.sendMessage(
-				{ action: "generateListing", product },
+				{ action: "generateListing", product, notes },
 				(response) => {
 					clearTimeout(timeout);
 					btn.disabled = false;

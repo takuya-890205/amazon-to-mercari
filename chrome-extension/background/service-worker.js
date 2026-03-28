@@ -49,7 +49,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 // --- メッセージリスナー ---
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 	if (request.action === "generateListing") {
-		handleGenerateListing(request.product)
+		handleGenerateListing(request.product, request.notes)
 			.then(draft => sendResponse({ success: true, draft }))
 			.catch(err => sendResponse({ success: false, error: err.message }));
 		return true; // 非同期レスポンスを示す
@@ -59,7 +59,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 /**
  * 出品テキスト生成のメイン処理
  */
-async function handleGenerateListing(product) {
+async function handleGenerateListing(product, notes) {
 	// 設定を読み込む
 	const settings = await getSettings();
 	const apiKey = settings.apiKey;
@@ -69,7 +69,7 @@ async function handleGenerateListing(product) {
 	}
 
 	// Gemini APIで出品テキスト生成
-	const aiResult = await callGeminiApi(apiKey, product, settings);
+	const aiResult = await callGeminiApi(apiKey, product, settings, notes);
 
 	// 価格計算
 	let priceBreakdown = null;
@@ -126,7 +126,7 @@ function resolveRatioSW(condition, customRatios) {
 /**
  * Gemini API を呼び出して出品テキストを生成
  */
-async function callGeminiApi(apiKey, product, settings) {
+async function callGeminiApi(apiKey, product, settings, notes) {
 	// プロンプトを構築
 	const bulletText = (product.bulletPoints || []).slice(0, 5).map(bp => `・${bp}`).join("\n") || "なし";
 	const specText = Object.entries(product.specifications || {}).slice(0, 10).map(([k, v]) => `・${k}: ${v}`).join("\n") || "なし";
@@ -151,6 +151,10 @@ ${specText}
 
 【出品条件】
 商品の状態: ${settings.condition}
+
+【出品者からの特記事項】
+${notes || "なし"}
+※ 特記事項がある場合、説明文に必ず反映すること（状態・注意点・欠品など）
 
 【テンプレート指示】
 ${tplParts.length > 0 ? tplParts.join("\n") : "特になし"}
