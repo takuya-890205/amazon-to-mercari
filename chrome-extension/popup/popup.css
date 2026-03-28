@@ -1,0 +1,148 @@
+* {
+	margin: 0;
+	padding: 0;
+	box-sizing: border-box;
+}
+
+body {
+	width: 320px;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+	font-size: 13px;
+	color: #333;
+	padding: 16px;
+}
+
+.header {
+	text-align: center;
+	margin-bottom: 16px;
+	padding-bottom: 12px;
+	border-bottom: 2px solid #FF0211;
+}
+
+.header h1 {
+	font-size: 16px;
+	color: #FF0211;
+}
+
+.header .subtitle {
+	font-size: 11px;
+	color: #888;
+	margin-top: 2px;
+}
+
+.section {
+	margin-bottom: 12px;
+}
+
+.label {
+	display: block;
+	font-weight: 600;
+	margin-bottom: 4px;
+	font-size: 12px;
+}
+
+input[type="text"],
+input[type="password"],
+select {
+	width: 100%;
+	padding: 8px 10px;
+	border: 1px solid #ddd;
+	border-radius: 6px;
+	font-size: 13px;
+	outline: none;
+	transition: border-color 0.2s;
+}
+
+input:focus,
+select:focus {
+	border-color: #FF0211;
+}
+
+.api-key-row {
+	display: flex;
+	gap: 6px;
+}
+
+.api-key-row input {
+	flex: 1;
+}
+
+.btn-icon {
+	background: none;
+	border: 1px solid #ddd;
+	border-radius: 6px;
+	padding: 6px 10px;
+	cursor: pointer;
+	font-size: 14px;
+}
+
+.link {
+	display: block;
+	margin-top: 4px;
+	font-size: 11px;
+	color: #0066cc;
+	text-decoration: none;
+}
+
+.link:hover {
+	text-decoration: underline;
+}
+
+details {
+	border: 1px solid #eee;
+	border-radius: 6px;
+	padding: 8px;
+}
+
+summary {
+	cursor: pointer;
+	font-weight: 600;
+	font-size: 12px;
+	color: #555;
+}
+
+.details-content {
+	margin-top: 8px;
+}
+
+.details-content .label {
+	margin-top: 8px;
+}
+
+.btn-primary {
+	width: 100%;
+	padding: 10px;
+	background: #FF0211;
+	color: white;
+	border: none;
+	border-radius: 8px;
+	font-size: 14px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: opacity 0.2s;
+	margin-top: 4px;
+}
+
+.btn-primary:hover {
+	opacity: 0.85;
+}
+
+.status {
+	text-align: center;
+	font-size: 12px;
+	margin-top: 6px;
+	min-height: 18px;
+}
+
+.status.success {
+	color: #28a745;
+}
+
+.footer {
+	margin-top: 12px;
+	padding-top: 8px;
+	border-top: 1px solid #eee;
+	text-align: center;
+	font-size: 11px;
+	color: #999;
+}
