@@ -149,43 +149,27 @@
 					all: initial;
 					display: block;
 					font-family: "Hiragino Sans", "Yu Gothic", sans-serif;
-					border: 2px solid #FF0211;
+					border: 1px solid #ddd;
 					border-radius: 10px;
 					overflow: hidden;
+					background: #fff;
 				}
-				button {
+				.atm-header {
 					all: initial;
+					display: block;
 					background: #FF0211;
 					color: white;
-					border: none;
-					padding: 12px 24px;
-					font-size: 16px;
-					font-weight: bold;
 					font-family: "Hiragino Sans", "Yu Gothic", sans-serif;
-					cursor: pointer;
-					width: 100%;
-					min-height: 44px;
-					display: block;
-					box-sizing: border-box;
-					line-height: 1.2;
+					font-size: 13px;
+					font-weight: bold;
 					text-align: center;
+					padding: 6px 12px;
 					letter-spacing: 0.5px;
-					transition: opacity 0.2s;
 				}
-				button:hover { opacity: 0.85; }
-				button:disabled { cursor: wait; }
-				button.generating {
-					animation: pulse 1.5s ease-in-out infinite;
-				}
-				@keyframes pulse {
-					0%, 100% { opacity: 1; }
-					50% { opacity: 0.5; }
-				}
-				.atm-notes-area {
+				.atm-body {
 					all: initial;
 					display: block;
-					padding: 8px 10px;
-					background: #fff;
+					padding: 10px;
 					font-family: "Hiragino Sans", "Yu Gothic", sans-serif;
 				}
 				.atm-notes-label {
@@ -214,12 +198,43 @@
 				}
 				textarea::placeholder { color: #aaa; }
 				textarea:focus { outline: none; border-color: #FF0211; background: #fff; }
+				button {
+					all: initial;
+					background: #FF0211;
+					color: white;
+					border: none;
+					border-radius: 8px;
+					padding: 10px 24px;
+					font-size: 15px;
+					font-weight: bold;
+					font-family: "Hiragino Sans", "Yu Gothic", sans-serif;
+					cursor: pointer;
+					width: 100%;
+					min-height: 40px;
+					display: block;
+					box-sizing: border-box;
+					line-height: 1.2;
+					text-align: center;
+					margin-top: 8px;
+					box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+					transition: opacity 0.2s;
+				}
+				button:hover { opacity: 0.85; }
+				button:disabled { cursor: wait; }
+				button.generating {
+					animation: pulse 1.5s ease-in-out infinite;
+				}
+				@keyframes pulse {
+					0%, 100% { opacity: 1; }
+					50% { opacity: 0.5; }
+				}
 			</style>
 			<div class="atm-card">
-				<button id="atm-btn">メルカリに出品</button>
-				<div class="atm-notes-area">
+				<div class="atm-header">Amazon to メルカリ</div>
+				<div class="atm-body">
 					<span class="atm-notes-label">特記事項（任意）</span>
 					<textarea id="atm-notes" placeholder="例: 水没品のためジャンク扱い、箱なし、動作未確認" rows="1"></textarea>
+					<button id="atm-btn">出品テキストを生成</button>
 				</div>
 			</div>
 		`;
