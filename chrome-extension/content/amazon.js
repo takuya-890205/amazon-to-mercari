@@ -144,31 +144,20 @@
 
 		shadow.innerHTML = `
 			<style>
-				* { box-sizing: border-box; font-family: "Hiragino Sans", "Yu Gothic", sans-serif; }
-				textarea {
+				* { box-sizing: border-box; font-family: "Hiragino Sans", "Yu Gothic", sans-serif; margin: 0; padding: 0; }
+				.atm-card {
 					all: initial;
-					font-family: "Hiragino Sans", "Yu Gothic", sans-serif;
-					width: 100%;
-					min-height: 36px;
-					padding: 8px 10px;
-					border: 1px solid #ccc;
-					border-radius: 6px;
-					font-size: 13px;
-					line-height: 1.4;
-					resize: vertical;
 					display: block;
-					box-sizing: border-box;
-					margin-bottom: 8px;
-					color: #333;
+					font-family: "Hiragino Sans", "Yu Gothic", sans-serif;
+					border: 2px solid #FF0211;
+					border-radius: 10px;
+					overflow: hidden;
 				}
-				textarea::placeholder { color: #999; }
-				textarea:focus { outline: none; border-color: #FF0211; }
 				button {
 					all: initial;
 					background: #FF0211;
 					color: white;
 					border: none;
-					border-radius: 8px;
 					padding: 12px 24px;
 					font-size: 16px;
 					font-weight: bold;
@@ -181,14 +170,58 @@
 					line-height: 1.2;
 					text-align: center;
 					letter-spacing: 0.5px;
-					box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 					transition: opacity 0.2s;
 				}
 				button:hover { opacity: 0.85; }
-				button:disabled { opacity: 0.6; cursor: wait; }
+				button:disabled { cursor: wait; }
+				button.generating {
+					animation: pulse 1.5s ease-in-out infinite;
+				}
+				@keyframes pulse {
+					0%, 100% { opacity: 1; }
+					50% { opacity: 0.5; }
+				}
+				.atm-notes-area {
+					all: initial;
+					display: block;
+					padding: 8px 10px;
+					background: #fff;
+					font-family: "Hiragino Sans", "Yu Gothic", sans-serif;
+				}
+				.atm-notes-label {
+					all: initial;
+					display: block;
+					font-size: 11px;
+					color: #888;
+					margin-bottom: 4px;
+					font-family: "Hiragino Sans", "Yu Gothic", sans-serif;
+				}
+				textarea {
+					all: initial;
+					font-family: "Hiragino Sans", "Yu Gothic", sans-serif;
+					width: 100%;
+					min-height: 32px;
+					padding: 6px 8px;
+					border: 1px solid #ddd;
+					border-radius: 4px;
+					font-size: 13px;
+					line-height: 1.4;
+					resize: vertical;
+					display: block;
+					box-sizing: border-box;
+					color: #333;
+					background: #fafafa;
+				}
+				textarea::placeholder { color: #aaa; }
+				textarea:focus { outline: none; border-color: #FF0211; background: #fff; }
 			</style>
-			<textarea id="atm-notes" placeholder="特記事項（例: 水没品のためジャンク扱い、箱なし、動作未確認 等）" rows="2"></textarea>
-			<button id="atm-btn">メルカリに出品</button>
+			<div class="atm-card">
+				<button id="atm-btn">メルカリに出品</button>
+				<div class="atm-notes-area">
+					<span class="atm-notes-label">特記事項（任意）</span>
+					<textarea id="atm-notes" placeholder="例: 水没品のためジャンク扱い、箱なし、動作未確認" rows="1"></textarea>
+				</div>
+			</div>
 		`;
 
 		const btn = shadow.getElementById("atm-btn");
@@ -197,14 +230,20 @@
 		btn.addEventListener("click", async () => {
 			btn.disabled = true;
 			btn.textContent = "生成中...";
+			btn.classList.add("generating");
 
 			const product = scrapeProduct();
 			const notes = notesInput.value.trim();
 
 			// タイムアウト（90秒）: service workerが応答しない場合の保険
-			const timeout = setTimeout(() => {
+			const resetBtn = () => {
 				btn.disabled = false;
 				btn.textContent = "メルカリに出品";
+				btn.classList.remove("generating");
+			};
+
+			const timeout = setTimeout(() => {
+				resetBtn();
 				alert("生成がタイムアウトしました。もう一度お試しください。");
 			}, 90000);
 
@@ -213,8 +252,7 @@
 				{ action: "generateListing", product, notes },
 				(response) => {
 					clearTimeout(timeout);
-					btn.disabled = false;
-					btn.textContent = "メルカリに出品";
+					resetBtn();
 
 					// service workerとの通信エラー
 					if (chrome.runtime.lastError) {
