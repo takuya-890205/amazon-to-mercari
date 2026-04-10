@@ -9,6 +9,7 @@ data/
 !chrome-extension/**/*.html
 !privacy-policy.html
 *.png
+!chrome-extension/icons/*.png
 debug_*
 draft_*.json
 my_template.json
