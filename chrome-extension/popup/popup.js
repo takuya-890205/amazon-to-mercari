@@ -7,6 +7,7 @@ const $ = (sel) => document.querySelector(sel);
 // --- 要素取得 ---
 const apiKeyInput = $("#apiKey");
 const toggleKeyBtn = $("#toggleKey");
+const modelSelect = $("#model");
 const conditionSelect = $("#condition");
 const shippingMethodSelect = $("#shippingMethod");
 const shippingSizeSelect = $("#shippingSize");
@@ -61,6 +62,7 @@ toggleKeyBtn.addEventListener("click", () => {
 // --- 設定の読み込み ---
 chrome.storage.sync.get({
 	apiKey: "",
+	model: "gemini-2.5-flash",
 	condition: "目立った傷や汚れなし",
 	shippingMethod: "らくらくメルカリ便",
 	shippingSize: "60サイズ",
@@ -69,6 +71,7 @@ chrome.storage.sync.get({
 	descriptionFooter: "\nご質問はお気軽にコメントください。",
 }, (settings) => {
 	apiKeyInput.value = settings.apiKey;
+	modelSelect.value = settings.model;
 	conditionSelect.value = settings.condition;
 	shippingMethodSelect.value = settings.shippingMethod;
 	updateShippingSizes(settings.shippingMethod, settings.shippingSize);
@@ -101,6 +104,7 @@ saveBtn.addEventListener("click", () => {
 
 	const settings = {
 		apiKey,
+		model: modelSelect.value,
 		condition: conditionSelect.value,
 		shippingMethod: shippingMethodSelect.value,
 		shippingSize: shippingSizeSelect.value,

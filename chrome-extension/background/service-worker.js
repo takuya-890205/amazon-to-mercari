@@ -9,7 +9,8 @@
 //   必要な定数・関数をここに含める
 
 // --- 定数 ---
-const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+const DEFAULT_MODEL = "gemini-2.5-flash";
 
 const SW_MERCARI_FEE_RATE = 0.10;
 const SW_MERCARI_PRICE_MIN = 300;
@@ -168,38 +169,56 @@ ${tplParts.length > 0 ? tplParts.join("\n") : "特になし"}
 【出力形式】JSON形式のみ:
 {"title":"...","description":"...","category":["大","中","小"],"hashtags":["tag1","tag2"]}`;
 
-	// 60秒タイムアウト付きfetch
-	const controller = new AbortController();
-	const fetchTimeout = setTimeout(() => controller.abort(), 60000);
+	const model = settings.model || DEFAULT_MODEL;
+	const apiUrl = `${GEMINI_API_BASE}/${model}:generateContent`;
+	const body = JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] });
 
-	let response;
-	try {
-		response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				contents: [{ parts: [{ text: prompt }] }],
-			}),
-			signal: controller.signal,
-		});
-	} catch(e) {
-		clearTimeout(fetchTimeout);
-		if (e.name === "AbortError") {
-			throw new Error("Gemini APIがタイムアウトしました（60秒）。再試行してください。");
+	// 503/429時は指数バックオフで最大3回リトライ
+	const maxRetries = 3;
+	const retryableStatuses = [429, 500, 502, 503, 504];
+
+	for (let attempt = 0; attempt < maxRetries; attempt++) {
+		const controller = new AbortController();
+		const fetchTimeout = setTimeout(() => controller.abort(), 60000);
+
+		let response;
+		try {
+			response = await fetch(`${apiUrl}?key=${apiKey}`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body,
+				signal: controller.signal,
+			});
+		} catch(e) {
+			clearTimeout(fetchTimeout);
+			if (e.name === "AbortError") {
+				throw new Error("Gemini APIがタイムアウトしました（60秒）。再試行してください。");
+			}
+			throw e;
 		}
-		throw e;
-	}
-	clearTimeout(fetchTimeout);
+		clearTimeout(fetchTimeout);
 
-	if (!response.ok) {
+		if (response.ok) {
+			const data = await response.json();
+			const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+			return parseGeminiResponse(text);
+		}
+
+		// リトライ対象のエラーなら待ってから再試行
+		if (retryableStatuses.includes(response.status) && attempt < maxRetries - 1) {
+			const waitMs = Math.pow(2, attempt) * 2000; // 2秒, 4秒, 8秒
+			await new Promise(r => setTimeout(r, waitMs));
+			continue;
+		}
+
+		// リトライ不可 or リトライ回数超過
 		const errorData = await response.json().catch(() => ({}));
-		throw new Error(`Gemini API エラー (${response.status}): ${errorData.error?.message || response.statusText}`);
+		const baseMsg = `Gemini API エラー (${response.status}): ${errorData.error?.message || response.statusText}`;
+		if (response.status === 503) {
+			throw new Error(`${baseMsg}\n\nサーバーが混雑しています。しばらく待つか、設定でモデルを「gemini-2.0-flash」に変更してお試しください。`);
+		}
+		throw new Error(baseMsg);
 	}
-
-	const data = await response.json();
-	const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-
-	return parseGeminiResponse(text);
 }
 
 /**
@@ -238,6 +257,7 @@ async function getSettings() {
 	return new Promise((resolve) => {
 		chrome.storage.sync.get({
 			apiKey: "",
+			model: DEFAULT_MODEL,
 			condition: "目立った傷や汚れなし",
 			shippingMethod: "らくらくメルカリ便",
 			shippingSize: "60サイズ",
